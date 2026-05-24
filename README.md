@@ -46,6 +46,14 @@ It's compose-integrated: the app keeps running in its own `api`/`web` services
 (http://localhost:5173, http://localhost:8000), and you edit/run tests in the `dev`
 service. `cp .env.example .env` first if you haven't.
 
+> **Host-specific note:** the dev container currently mounts the repo at its host
+> absolute path (`/home/chris/...`) and bind-mounts `~/.claude` so Claude Code's auth,
+> settings, and per-project memory carry over unchanged. Both the workspace path
+> (`.devcontainer/devcontainer.json` + `docker-compose.dev.yml`) are pinned to that
+> path. **When other people start contributing**, switch the workspace mount back to a
+> generic `/workspaces/${localWorkspaceFolderBasename}` and drop/adjust the `~/.claude`
+> mount, since those are personal to one machine.
+
 ## What works in Phase 0
 
 - Create **Projects** (Libraries) and add references manually.

@@ -3,9 +3,18 @@
   // Compose-integrated: the existing stack + a `dev` tooling service we edit in.
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.dev.yml"],
   "service": "dev",
-  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  // Same absolute path as the host (see docker-compose.dev.yml) so Claude Code's
+  // path-keyed memory/history carry over unchanged.
+  "workspaceFolder": "/home/chris/Repos/school/e4e/e4e-reference-manager",
   // Bring up the whole app alongside the dev container.
   "runServices": ["postgres", "seaweedfs", "api", "web"],
+
+  // Share host Claude Code state so auth, settings, and project memory persist.
+  // Mounted to the vscode user's home; your uid (1000) matches, so read/write works.
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind"
+  ],
 
   "features": {
     "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },

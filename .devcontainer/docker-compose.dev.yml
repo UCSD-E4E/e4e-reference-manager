@@ -6,9 +6,12 @@ services:
     image: mcr.microsoft.com/devcontainers/base:bookworm
     command: sleep infinity
     volumes:
-      # Path is resolved relative to this file's directory (.devcontainer), so ../..
-      # mounts the repo's parent; the repo lands at /workspaces/<repo-name>.
-      - ../..:/workspaces:cached
+      # Mount the repo at the SAME absolute path as the host. This makes Claude Code's
+      # path-keyed state (per-project memory + history) map unchanged inside the
+      # container. '..' is the repo root (resolved relative to this .devcontainer file).
+      # NOTE: this path is host-specific (currently chris's). When teammates join,
+      # switch back to a generic /workspaces mount or parameterize this.
+      - ..:/home/chris/Repos/school/e4e/e4e-reference-manager:cached
     environment:
       # Reach the other services by their compose names from inside the dev container
       REFMAN_DATABASE_URL: postgresql+asyncpg://refman:refman@postgres:5432/refman
