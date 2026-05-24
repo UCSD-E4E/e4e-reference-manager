@@ -4,7 +4,7 @@ A self-hosted, collaborative reference manager for a research org: version histo
 BibTeX/Overleaf export, in-app PDF reading, and (later) local ML for search and
 categorization. See [plan.md](plan.md) for the full design and roadmap.
 
-**Status: Phase 0 (Foundations) — implemented & verified.**
+**Status: Phase 1 (Collaboration & history) — implemented & verified.**
 
 ## Stack
 
@@ -65,6 +65,20 @@ service. `cp .env.example .env` first if you haven't.
   short-expiry URL.
 - **Edit references** with optimistic locking (version conflicts return HTTP 409).
 - Installable **PWA** shell with a responsive, mobile-first layout.
+
+## What works in Phase 1 (collaboration & history)
+
+- **Groups** and membership; libraries owned by a **user or a group**.
+- **RBAC**: per-library access levels (view / edit / manage) via ownership, group
+  ownership, or shares; org admins see everything. All read/write paths are
+  permission-scoped (no access → 404).
+- **Sharing**: share a library with groups at a chosen access level.
+- **Notes**: per-author Markdown notes on references.
+- **History**: append-only audit log of every change, an **item history view with
+  one-click restore**, and a per-library **activity feed**.
+- **Authentik group sync**: OIDC login maps group claims → memberships and an admin
+  group → org-admin.
+- Schema is managed by **Alembic** (the API runs `alembic upgrade head` on start).
 
 ## Enabling Authentik (production auth)
 
