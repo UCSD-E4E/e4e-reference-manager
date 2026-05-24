@@ -1,0 +1,73 @@
+# Phase 0 stack: Postgres+pgvector, SeaweedFS (S3), and the API.
+# Frontend (web), Caddy proxy, and ML services (Ollama/GROBID/translation-server)
+# are added in later phases.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: refman
+      POSTGRES_PASSWORD: refman
+      POSTGRES_DB: refman
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U refman"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json -ip.bind=0.0.0.0
+    ports:
+      - "8333:8333"  # S3 API
+      - "8888:8888"  # filer
+    volumes:
+      - seaweeddata:/data
+      - ./deploy/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8333/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./api
+    env_file:
+      - .env
+    environment:
+      # Service-to-service overrides (the .env defaults target the host)
+      REFMAN_DATABASE_URL: postgresql+asyncpg://refman:refman@postgres:5432/refman
+      REFMAN_S3_ENDPOINT_URL: http://seaweedfs:8333
+      REFMAN_S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api/app:/app/app  # live-reload during dev
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+
+  web:
+    image: node:22-alpine
+    working_dir: /web
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/web
+      - web_node_modules:/web/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  seaweeddata:
+  web_node_modules:

@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "refman",
+      "credentials": [
+        { "accessKey": "refman", "secretKey": "refman-secret" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
