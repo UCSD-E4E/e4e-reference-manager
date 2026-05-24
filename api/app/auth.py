@@ -6,16 +6,57 @@ the OIDC_* settings; users then log in through Authentik.
 """
 from __future__ import annotations
 
+import re
+
 from authlib.integrations.starlette_client import OAuth
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .db import get_session
-from .models import User
+from .models import Group, User, user_group
 
 oauth = OAuth()
+
+
+def _slugify(name: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return s or "group"
+
+
+async def sync_user_groups(session: AsyncSession, user: User, group_names: list[str]) -> None:
+    """Reconcile a user's group memberships from Authentik group claims (additive),
+    and grant org admin if they're in the configured admin group."""
+    s = get_settings()
+    desired_ids = []
+    for name in group_names:
+        group = await session.scalar(select(Group).where(Group.authentik_ref == name))
+        if group is None:
+            base = _slugify(name)
+            slug, i = base, 1
+            while await session.scalar(select(Group).where(Group.slug == slug)) is not None:
+                i += 1
+                slug = f"{base}-{i}"
+            group = Group(slug=slug, name=name, authentik_ref=name)
+            session.add(group)
+            await session.flush()
+        desired_ids.append(group.id)
+
+    existing = set(
+        (
+            await session.execute(
+                select(user_group.c.group_id).where(user_group.c.user_id == user.id)
+            )
+        ).scalars()
+    )
+    for gid in desired_ids:
+        if gid not in existing:
+            await session.execute(insert(user_group).values(user_id=user.id, group_id=gid))
+
+    if s.oidc_admin_group and s.oidc_admin_group in group_names:
+        user.org_role = "admin"
+    await session.commit()
 
 
 def register_oidc() -> bool:

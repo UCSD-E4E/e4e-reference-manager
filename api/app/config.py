@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     oidc_issuer: str = ""  # e.g. https://authentik.example.org/application/o/refman/
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
+    # Group sync: claim that carries the user's group names, and the group whose
+    # members are treated as org admins.
+    oidc_groups_claim: str = "groups"
+    oidc_admin_group: str = ""
     # Where Authentik redirects back to (this API's /auth/callback)
     oidc_redirect_uri: str = "http://localhost:8000/auth/callback"
     # Where to send the user after a successful login (the SPA)

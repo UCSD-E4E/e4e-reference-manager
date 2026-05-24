@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
 from ..db import get_session
-from ..deps import get_owned_item
+from ..deps import item_editor, library_access_level
 from ..models import Attachment, Item, Library, User
 from ..schemas import AttachmentOut
 from ..storage import presigned_get_url, upload_bytes
@@ -19,7 +19,7 @@ router = APIRouter(tags=["attachments"])
 @router.post("/items/{item_id}/attachments", response_model=AttachmentOut, status_code=201)
 async def upload_attachment(
     file: UploadFile,
-    item: Item = Depends(get_owned_item),
+    item: Item = Depends(item_editor),
     session: AsyncSession = Depends(get_session),
 ):
     data = await file.read()
@@ -53,7 +53,7 @@ async def _owned_attachment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
     item = await session.get(Item, att.item_id)
     lib = await session.get(Library, item.library_id) if item else None
-    if lib is None or lib.owner_id != user.id:
+    if lib is None or await library_access_level(session, user, lib) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
     return att
 
