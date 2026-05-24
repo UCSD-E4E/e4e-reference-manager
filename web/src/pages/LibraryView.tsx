@@ -27,6 +27,8 @@ export default function LibraryView() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [shareGroup, setShareGroup] = useState("");
   const [shareLevel, setShareLevel] = useState("view");
+  const [ingestQuery, setIngestQuery] = useState("");
+  const [ingestMsg, setIngestMsg] = useState("");
 
   // manual add form
   const [key, setKey] = useState("");
@@ -105,6 +107,40 @@ export default function LibraryView() {
     }
   };
 
+  const doIngest = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!ingestQuery.trim()) return;
+    setIngestMsg("Looking up…");
+    try {
+      const { results } = await api.ingest(libId, ingestQuery.trim());
+      const created = results.filter((r) => r.status === "created").length;
+      const dup = results.filter((r) => r.status === "duplicate").length;
+      setIngestMsg(`Imported ${created}${dup ? `, ${dup} already in library` : ""}.`);
+      setIngestQuery("");
+      loadItems(q);
+      loadMeta();
+    } catch (e) {
+      setIngestMsg("");
+      setErr(String(e));
+    }
+  };
+
+  const onFromPdf = async (e: FormEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0];
+    if (!file) return;
+    setIngestMsg("Extracting metadata from PDF…");
+    try {
+      await api.createItemFromPdf(libId, file);
+      setIngestMsg("Added reference from PDF.");
+      loadItems(q);
+      loadMeta();
+    } catch (e) {
+      setIngestMsg("");
+      setErr(String(e));
+    }
+    e.currentTarget.value = "";
+  };
+
   const addShare = async (e: FormEvent) => {
     e.preventDefault();
     if (!shareGroup) return;
@@ -150,6 +186,27 @@ export default function LibraryView() {
             {imp.key_collisions.length > 0 &&
               ` Duplicate citation keys flagged (kept as-is): ${imp.key_collisions.join(", ")}.`}
           </p>
+        )}
+        {canEdit && (
+          <>
+            <form className="row" style={{ marginTop: "0.5rem" }} onSubmit={doIngest}>
+              <input
+                className="grow"
+                placeholder="Import by DOI, arXiv ID, PMID, ISBN, or URL…"
+                value={ingestQuery}
+                onChange={(e) => setIngestQuery(e.target.value)}
+              />
+              <button type="submit">Fetch</button>
+              <label
+                className="secondary"
+                style={{ padding: "0.55rem 0.7rem", borderRadius: 8, cursor: "pointer" }}
+              >
+                Add from PDF
+                <input type="file" accept="application/pdf" onChange={onFromPdf} style={{ display: "none" }} />
+              </label>
+            </form>
+            {ingestMsg && <p className="muted">{ingestMsg}</p>}
+          </>
         )}
       </div>
 

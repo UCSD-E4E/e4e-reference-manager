@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     s3_bucket: str = "refman-pdfs"
     presign_expiry_seconds: int = 900  # 15 minutes
 
+    # Ingestion services (Phase 2)
+    translation_server_url: str = "http://translation-server:1969"
+    grobid_url: str = "http://grobid:8070"
+
     # Sessions
     session_secret: str = "dev-only-change-me"
 

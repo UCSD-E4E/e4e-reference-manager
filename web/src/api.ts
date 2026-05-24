@@ -2,6 +2,7 @@ import type {
   AuditEvent,
   Group,
   ImportResult,
+  IngestResult,
   Item,
   ItemList,
   Library,
@@ -110,4 +111,21 @@ export const api = {
   // Group-owned library
   createGroupLibrary: (name: string, owner_group_id: string) =>
     req<Library>("/libraries", { method: "POST", body: JSON.stringify({ name, owner_group_id }) }),
+
+  // Ingestion (Phase 2)
+  ingest: (libId: string, query: string) =>
+    req<IngestResult>(`/libraries/${libId}/ingest`, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+  createItemFromPdf: (libId: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return req<Item>(`/libraries/${libId}/items/from-pdf`, { method: "POST", body: fd });
+  },
+  extractMetadata: (itemId: string, apply: boolean) =>
+    req<{ csl_json: Record<string, unknown>; applied: boolean; item: Item | null }>(
+      `/items/${itemId}/extract-metadata?apply=${apply}`,
+      { method: "POST" },
+    ),
 };
