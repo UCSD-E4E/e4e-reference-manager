@@ -79,6 +79,16 @@ export default function ItemView() {
     }
   };
 
+  const fillFromPdf = async () => {
+    setErr("");
+    try {
+      await api.extractMetadata(itemId, true);
+      reload();
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
   if (!item)
     return <p className="muted">{err ? <span className="error">{err}</span> : "Loading…"}</p>;
 
@@ -110,13 +120,20 @@ export default function ItemView() {
       <div className="card">
         <h2>PDFs</h2>
         {canEdit && (
-          <label
-            className="secondary"
-            style={{ padding: "0.55rem 0.7rem", borderRadius: 8, display: "inline-block" }}
-          >
-            Upload PDF
-            <input type="file" accept="application/pdf" onChange={onUpload} style={{ display: "none" }} />
-          </label>
+          <div className="row">
+            <label
+              className="secondary"
+              style={{ padding: "0.55rem 0.7rem", borderRadius: 8, cursor: "pointer" }}
+            >
+              Upload PDF
+              <input type="file" accept="application/pdf" onChange={onUpload} style={{ display: "none" }} />
+            </label>
+            {item.attachments.length > 0 && (
+              <button className="secondary" type="button" onClick={fillFromPdf}>
+                Fill metadata from PDF
+              </button>
+            )}
+          </div>
         )}
         {item.attachments.length === 0 && <p className="muted">No PDFs attached.</p>}
         {item.attachments.map((a) => (

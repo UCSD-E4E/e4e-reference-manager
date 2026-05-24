@@ -147,3 +147,28 @@ class AuditEventOut(BaseModel):
     operation: str
     summary: str
     occurred_at: datetime
+
+
+# --- Ingestion (Phase 2) ---
+
+
+class IngestRequest(BaseModel):
+    query: str  # DOI / arXiv / PMID / ISBN identifier, or a URL
+
+
+class IngestResultItem(BaseModel):
+    status: str  # created | duplicate
+    item_id: uuid.UUID | None
+    citation_key: str
+    title: str
+    doi: str | None = None
+
+
+class IngestResult(BaseModel):
+    results: list[IngestResultItem]
+
+
+class MetadataProposal(BaseModel):
+    csl_json: dict
+    applied: bool = False
+    item: ItemOut | None = None

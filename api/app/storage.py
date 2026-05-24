@@ -37,6 +37,10 @@ def upload_bytes(key: str, data: bytes, content_type: str) -> None:
     )
 
 
+def download_bytes(key: str) -> bytes:
+    return _client().get_object(Bucket=settings.s3_bucket, Key=key)["Body"].read()
+
+
 def presigned_get_url(key: str, download_name: str | None = None) -> str:
     """Presigned GET URL, signed with the *public* endpoint the browser can reach."""
     params = {"Bucket": settings.s3_bucket, "Key": key}

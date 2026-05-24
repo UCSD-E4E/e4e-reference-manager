@@ -33,6 +33,20 @@ services:
       timeout: 5s
       retries: 20
 
+  # Metadata import: 600+ Zotero translators (DOI/arXiv/PMID/ISBN/URL -> CSL-JSON)
+  translation-server:
+    image: zotero/translation-server:latest
+    ports:
+      - "1969:1969"
+    restart: unless-stopped
+
+  # PDF -> structured header metadata + references. Heavy (~4GB RAM); CPU is fine.
+  grobid:
+    image: grobid/grobid:0.8.1
+    ports:
+      - "8070:8070"
+    restart: unless-stopped
+
   api:
     build: ./api
     env_file:
@@ -42,6 +56,8 @@ services:
       REFMAN_DATABASE_URL: postgresql+asyncpg://refman:refman@postgres:5432/refman
       REFMAN_S3_ENDPOINT_URL: http://seaweedfs:8333
       REFMAN_S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
+      REFMAN_TRANSLATION_SERVER_URL: http://translation-server:1969
+      REFMAN_GROBID_URL: http://grobid:8070
     ports:
       - "8000:8000"
     volumes:

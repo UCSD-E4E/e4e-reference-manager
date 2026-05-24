@@ -48,6 +48,18 @@ export interface AuditEvent {
   occurred_at: string;
 }
 
+export interface IngestResultItem {
+  status: "created" | "duplicate";
+  item_id: string | null;
+  citation_key: string;
+  title: string;
+  doi: string | null;
+}
+
+export interface IngestResult {
+  results: IngestResultItem[];
+}
+
 export interface Attachment {
   id: string;
   filename: string;
