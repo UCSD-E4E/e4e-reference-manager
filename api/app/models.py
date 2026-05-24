@@ -1,8 +1,10 @@
-"""SQLAlchemy ORM models for Phase 0.
+"""SQLAlchemy ORM models.
 
-Entities: User, Library (= Project), Collection, BibFile, Item (= Reference),
-Attachment, Tag. Collaboration/history (Groups, Notes, AuditEvent) and ML
-(Embedding) entities arrive in later phases.
+Phase 0: User, Library (= Project), Collection, BibFile, Item (= Reference),
+Attachment, Tag.
+Phase 1 (collaboration + history): Group, user_group, group/shared Library
+ownership, LibraryShare, Note, AuditEvent, and User.org_role.
+ML (Embedding) entities arrive in later phases.
 """
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -18,6 +21,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -48,6 +52,18 @@ item_tag = Table(
     Column("tag_id", ForeignKey("tag.id", ondelete="CASCADE"), primary_key=True),
 )
 
+user_group = Table(
+    "user_group",
+    Base.metadata,
+    Column("user_id", ForeignKey("user_account.id", ondelete="CASCADE"), primary_key=True),
+    Column("group_id", ForeignKey("group_team.id", ondelete="CASCADE"), primary_key=True),
+)
+
+# Org-level roles and per-resource access levels (kept as plain strings + constants)
+ORG_ROLES = ("admin", "member", "read-only")
+ACCESS_LEVELS = ("view", "edit", "manage")
+_ACCESS_RANK = {"view": 1, "edit": 2, "manage": 3}
+
 
 class User(Base):
     __tablename__ = "user_account"
@@ -56,21 +72,50 @@ class User(Base):
     sub: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(320), index=True)
     name: Mapped[str] = mapped_column(String(255), default="")
+    org_role: Mapped[str] = mapped_column(String(32), default="member")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    groups: Mapped[list["Group"]] = relationship(secondary=user_group, lazy="selectin")
+
+
+class Group(Base):
+    """A team. Membership is typically sourced from Authentik group claims."""
+
+    __tablename__ = "group_team"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, default="")
+    # Identifier of the matching Authentik group (name/pk), if synced from OIDC claims
+    authentik_ref: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Library(Base):
-    """A shared library / project. Phase 0: owned by a user. Group ownership in Phase 1."""
+    """A shared library / project, owned by exactly one user OR one group."""
 
     __tablename__ = "library"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
-    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user_account.id", ondelete="CASCADE"))
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_account.id", ondelete="CASCADE"), nullable=True
+    )
+    owner_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("group_team.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "(owner_id IS NOT NULL) <> (owner_group_id IS NOT NULL)",
+            name="ck_library_single_owner",
+        ),
     )
 
 
@@ -164,3 +209,61 @@ class Tag(Base):
     library_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("library.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     source: Mapped[str] = mapped_column(String(32), default="manual")  # manual | ml
+
+
+class LibraryShare(Base):
+    """Grants a Group an access level on a Library (view | edit | manage)."""
+
+    __tablename__ = "library_share"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    library_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("library.id", ondelete="CASCADE"))
+    group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("group_team.id", ondelete="CASCADE"))
+    access_level: Mapped[str] = mapped_column(String(16), default="view")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("library_id", "group_id", name="uq_library_share_library_group"),
+    )
+
+
+class Note(Base):
+    """A free-text (Markdown) note on an Item, authored by a user."""
+
+    __tablename__ = "note"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("item.id", ondelete="CASCADE"), index=True
+    )
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
+    )
+    body: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AuditEvent(Base):
+    """Append-only history. One row per mutation; `before`/`after` are JSON snapshots."""
+
+    __tablename__ = "audit_event"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
+    )
+    library_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("library.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    entity_type: Mapped[str] = mapped_column(String(32))  # item | note | library | share
+    entity_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    operation: Mapped[str] = mapped_column(String(16))  # create | update | delete | restore
+    summary: Mapped[str] = mapped_column(Text, default="")
+    before: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
