@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import get_current_user, get_or_create_user, oauth
+from ..auth import get_current_user, get_or_create_user, oauth, sync_user_groups
 from ..config import get_settings
 from ..db import get_session
 from ..models import User
@@ -27,9 +27,12 @@ async def callback(request: Request, session: AsyncSession = Depends(get_session
     sub = userinfo.get("sub")
     if not sub:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No subject in OIDC token")
-    await get_or_create_user(
+    user = await get_or_create_user(
         session, sub=sub, email=userinfo.get("email", ""), name=userinfo.get("name", "")
     )
+    groups = userinfo.get(s.oidc_groups_claim) or []
+    if isinstance(groups, list):
+        await sync_user_groups(session, user, [str(g) for g in groups])
     request.session["user_sub"] = sub
     return RedirectResponse(s.post_login_redirect)
 

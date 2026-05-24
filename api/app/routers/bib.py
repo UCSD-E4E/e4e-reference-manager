@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth import get_current_user
 from ..bibtex import build_bibtex, parse_bibtex
 from ..db import get_session
-from ..deps import get_owned_library
+from ..deps import library_access_level, library_editor, library_viewer
 from ..models import BibFile, Item, Library, User
 from ..routers.items import _denormalize
 from ..schemas import ImportResult
@@ -19,7 +19,7 @@ router = APIRouter(tags=["bibtex"])
 @router.post("/libraries/{library_id}/import", response_model=ImportResult)
 async def import_bib(
     file: UploadFile,
-    lib: Library = Depends(get_owned_library),
+    lib: Library = Depends(library_editor),
     session: AsyncSession = Depends(get_session),
 ):
     raw = (await file.read()).decode("utf-8", errors="replace")
@@ -75,7 +75,7 @@ def _bib_response(items: list[Item], filename: str) -> PlainTextResponse:
 
 @router.get("/libraries/{library_id}/export.bib")
 async def export_library(
-    lib: Library = Depends(get_owned_library), session: AsyncSession = Depends(get_session)
+    lib: Library = Depends(library_viewer), session: AsyncSession = Depends(get_session)
 ):
     rows = await session.execute(
         select(Item).where(Item.library_id == lib.id).order_by(Item.citation_key)
@@ -93,7 +93,7 @@ async def export_bib_file(
     if bib_file is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "BibFile not found")
     lib = await session.get(Library, bib_file.library_id)
-    if lib is None or lib.owner_id != user.id:
+    if lib is None or await library_access_level(session, user, lib) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "BibFile not found")
     rows = await session.execute(
         select(Item)
