@@ -11,7 +11,6 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import register_oidc
 from .config import get_settings
-from .db import init_db
 from .routers import attachments, auth, bib, health, items, libraries
 from .storage import ensure_bucket
 
@@ -21,7 +20,6 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
     try:
         await run_in_threadpool(ensure_bucket)
     except Exception as exc:  # storage is optional for basic API use
