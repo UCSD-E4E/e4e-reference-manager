@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
-import type { Item } from "../types";
+import type { AuditEvent, Item, Note } from "../types";
 
 function authorsText(csl: Record<string, unknown>): string {
   const authors = csl.author as Array<{ family?: string; given?: string }> | undefined;
@@ -13,26 +13,52 @@ function authorsText(csl: Record<string, unknown>): string {
 export default function ItemView() {
   const { itemId = "" } = useParams();
   const [item, setItem] = useState<Item | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [history, setHistory] = useState<AuditEvent[]>([]);
+  const [noteBody, setNoteBody] = useState("");
   const [err, setErr] = useState("");
   const [viewUrl, setViewUrl] = useState<string | null>(null);
 
-  const load = () => api.getItem(itemId).then(setItem).catch((e) => setErr(String(e)));
+  const reload = async () => {
+    try {
+      const it = await api.getItem(itemId);
+      setItem(it);
+      setNotes(await api.listNotes(itemId));
+      setHistory(await api.itemHistory(itemId));
+      const lib = await api.getLibrary(it.library_id);
+      setCanEdit(lib.my_access === "edit" || lib.my_access === "manage");
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
   useEffect(() => {
-    load();
+    reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemId]);
 
   const onUpload = async (e: FormEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0];
     if (!file) return;
-    setErr("");
     try {
       await api.uploadAttachment(itemId, file);
-      load();
+      reload();
     } catch (e) {
       setErr(String(e));
     }
     e.currentTarget.value = "";
+  };
+
+  const addNote = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!noteBody.trim()) return;
+    try {
+      await api.createNote(itemId, noteBody.trim());
+      setNoteBody("");
+      reload();
+    } catch (e) {
+      setErr(String(e));
+    }
   };
 
   const view = async (attId: string) => {
@@ -44,7 +70,17 @@ export default function ItemView() {
     }
   };
 
-  if (!item) return <p className="muted">{err ? <span className="error">{err}</span> : "Loading…"}</p>;
+  const restore = async (eventId: string) => {
+    try {
+      await api.restoreItem(itemId, eventId);
+      reload();
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
+  if (!item)
+    return <p className="muted">{err ? <span className="error">{err}</span> : "Loading…"}</p>;
 
   const csl = item.csl_json;
   return (
@@ -69,15 +105,19 @@ export default function ItemView() {
             DOI: <a href={`https://doi.org/${item.doi}`}>{item.doi}</a>
           </p>
         )}
-        {typeof csl.abstract === "string" && <p>{csl.abstract as string}</p>}
       </div>
 
       <div className="card">
         <h2>PDFs</h2>
-        <label className="secondary" style={{ padding: "0.55rem 0.7rem", borderRadius: 8, display: "inline-block" }}>
-          Upload PDF
-          <input type="file" accept="application/pdf" onChange={onUpload} style={{ display: "none" }} />
-        </label>
+        {canEdit && (
+          <label
+            className="secondary"
+            style={{ padding: "0.55rem 0.7rem", borderRadius: 8, display: "inline-block" }}
+          >
+            Upload PDF
+            <input type="file" accept="application/pdf" onChange={onUpload} style={{ display: "none" }} />
+          </label>
+        )}
         {item.attachments.length === 0 && <p className="muted">No PDFs attached.</p>}
         {item.attachments.map((a) => (
           <div className="item-row" key={a.id}>
@@ -103,6 +143,53 @@ export default function ItemView() {
           <PdfViewer url={viewUrl} />
         </div>
       )}
+
+      <div className="card">
+        <h2>Notes</h2>
+        {notes.length === 0 && <p className="muted">No notes yet.</p>}
+        {notes.map((n) => (
+          <div className="item-row" key={n.id}>
+            <span className="grow note-body">{n.body}</span>
+            {canEdit && (
+              <button
+                className="secondary"
+                type="button"
+                onClick={() => api.deleteNote(n.id).then(reload)}
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        ))}
+        {canEdit && (
+          <form className="row" style={{ marginTop: "0.5rem" }} onSubmit={addNote}>
+            <input
+              className="grow"
+              placeholder="Add a note…"
+              value={noteBody}
+              onChange={(e) => setNoteBody(e.target.value)}
+            />
+            <button type="submit">Add</button>
+          </form>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>History</h2>
+        {history.map((ev) => (
+          <div className="event row" key={ev.id}>
+            <span className="grow">
+              <strong>{ev.operation}</strong> · {ev.summary}{" "}
+              <span className="muted">{new Date(ev.occurred_at).toLocaleString()}</span>
+            </span>
+            {canEdit && ev.entity_type === "item" && ev.operation !== "delete" && (
+              <button className="secondary" type="button" onClick={() => restore(ev.id)}>
+                Restore
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

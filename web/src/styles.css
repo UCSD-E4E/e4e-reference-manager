@@ -24,6 +24,11 @@ body {
   padding-top: max(0.75rem, env(safe-area-inset-top));
 }
 .brand { color: #fff; font-weight: 700; text-decoration: none; font-size: 1.1rem; }
+.navlink { color: #cbd5e1; text-decoration: none; font-size: 0.95rem; }
+.navlink:hover { color: #fff; }
+.note-body { white-space: pre-wrap; }
+.event { padding: 0.4rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.event:last-child { border-bottom: none; }
 
 .content { max-width: 900px; margin: 0 auto; padding: 1rem; }
 

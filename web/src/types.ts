@@ -8,9 +8,44 @@ export interface Library {
   id: string;
   name: string;
   description: string;
-  owner_id: string;
+  owner_id: string | null;
+  owner_group_id: string | null;
+  my_access: "view" | "edit" | "manage" | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Group {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+}
+
+export interface Share {
+  id: string;
+  group_id: string;
+  access_level: "view" | "edit" | "manage";
+  created_at: string;
+}
+
+export interface Note {
+  id: string;
+  item_id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  actor_id: string | null;
+  library_id: string | null;
+  entity_type: string;
+  operation: string;
+  summary: string;
+  occurred_at: string;
 }
 
 export interface Attachment {
