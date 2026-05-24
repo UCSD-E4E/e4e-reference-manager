@@ -1,0 +1,25 @@
+# Dev-container overlay. Adds a `dev` tooling service to the existing stack.
+# Only loaded by VS Code / the Dev Containers CLI (referenced from devcontainer.json);
+# a plain `docker compose up` on the host does NOT include this file or the `dev` service.
+services:
+  dev:
+    image: mcr.microsoft.com/devcontainers/base:bookworm
+    command: sleep infinity
+    volumes:
+      # Path is resolved relative to this file's directory (.devcontainer), so ../..
+      # mounts the repo's parent; the repo lands at /workspaces/<repo-name>.
+      - ../..:/workspaces:cached
+    environment:
+      # Reach the other services by their compose names from inside the dev container
+      REFMAN_DATABASE_URL: postgresql+asyncpg://refman:refman@postgres:5432/refman
+      REFMAN_S3_ENDPOINT_URL: http://seaweedfs:8333
+      REFMAN_S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      api:
+        condition: service_started
+      web:
+        condition: service_started

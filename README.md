@@ -33,6 +33,19 @@ Then open:
 By default `REFMAN_DEV_AUTH=true`, so you're auto-logged-in as a dev user — no Authentik
 needed to try it locally.
 
+## Develop in a dev container (recommended for contributors)
+
+The repo ships a [VS Code Dev Container](.devcontainer/). In VS Code with the **Dev
+Containers** extension: **“Reopen in Container.”** This brings up the whole stack
+(Postgres, SeaweedFS, API, web) and drops you into a tooling container with pinned
+**Python 3.12 + uv** and **Node 22**, so IntelliSense/linting/tests work for both the
+API and the frontend with zero host setup. (No need to install Python or Node on your
+machine — handy, since host Python/Node versions often don't match the project.)
+
+It's compose-integrated: the app keeps running in its own `api`/`web` services
+(http://localhost:5173, http://localhost:8000), and you edit/run tests in the `dev`
+service. `cp .env.example .env` first if you haven't.
+
 ## What works in Phase 0
 
 - Create **Projects** (Libraries) and add references manually.
