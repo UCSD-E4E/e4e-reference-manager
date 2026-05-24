@@ -1,4 +1,14 @@
-import type { ImportResult, Item, ItemList, Library, User } from "./types";
+import type {
+  AuditEvent,
+  Group,
+  ImportResult,
+  Item,
+  ItemList,
+  Library,
+  Note,
+  Share,
+  User,
+} from "./types";
 
 export const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
@@ -62,4 +72,42 @@ export const api = {
   attachmentSignedUrl: (attId: string) =>
     req<{ url: string; content_type: string }>(`/attachments/${attId}/url`),
   attachmentDownloadUrl: (attId: string) => `${API_URL}/attachments/${attId}/download`,
+
+  // Groups & members
+  listGroups: () => req<Group[]>("/groups"),
+  createGroup: (slug: string, name: string) =>
+    req<Group>("/groups", { method: "POST", body: JSON.stringify({ slug, name }) }),
+  listMembers: (groupId: string) => req<User[]>(`/groups/${groupId}/members`),
+  addMember: (groupId: string, email: string) =>
+    req<User[]>(`/groups/${groupId}/members`, { method: "POST", body: JSON.stringify({ email }) }),
+  removeMember: (groupId: string, userId: string) =>
+    req<void>(`/groups/${groupId}/members/${userId}`, { method: "DELETE" }),
+
+  // Library shares
+  listShares: (libId: string) => req<Share[]>(`/libraries/${libId}/shares`),
+  upsertShare: (libId: string, group_id: string, access_level: string) =>
+    req<Share>(`/libraries/${libId}/shares`, {
+      method: "POST",
+      body: JSON.stringify({ group_id, access_level }),
+    }),
+  deleteShare: (libId: string, groupId: string) =>
+    req<void>(`/libraries/${libId}/shares/${groupId}`, { method: "DELETE" }),
+
+  // Notes
+  listNotes: (itemId: string) => req<Note[]>(`/items/${itemId}/notes`),
+  createNote: (itemId: string, body: string) =>
+    req<Note>(`/items/${itemId}/notes`, { method: "POST", body: JSON.stringify({ body }) }),
+  updateNote: (noteId: string, body: string) =>
+    req<Note>(`/notes/${noteId}`, { method: "PATCH", body: JSON.stringify({ body }) }),
+  deleteNote: (noteId: string) => req<void>(`/notes/${noteId}`, { method: "DELETE" }),
+
+  // History / activity
+  itemHistory: (itemId: string) => req<AuditEvent[]>(`/items/${itemId}/history`),
+  restoreItem: (itemId: string, eventId: string) =>
+    req<Item>(`/items/${itemId}/restore?event_id=${eventId}`, { method: "POST" }),
+  libraryActivity: (libId: string) => req<AuditEvent[]>(`/libraries/${libId}/activity`),
+
+  // Group-owned library
+  createGroupLibrary: (name: string, owner_group_id: string) =>
+    req<Library>("/libraries", { method: "POST", body: JSON.stringify({ name, owner_group_id }) }),
 };
