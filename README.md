@@ -4,7 +4,7 @@ A self-hosted, collaborative reference manager for a research org: version histo
 BibTeX/Overleaf export, in-app PDF reading, and (later) local ML for search and
 categorization. See [plan.md](plan.md) for the full design and roadmap.
 
-**Status: Phase 1 (Collaboration & history) — implemented & verified.**
+**Status: Phase 2 (Ingestion automation) — implemented; live services need `docker compose up`.**
 
 ## Stack
 
@@ -79,6 +79,22 @@ service. `cp .env.example .env` first if you haven't.
 - **Authentik group sync**: OIDC login maps group claims → memberships and an admin
   group → org-admin.
 - Schema is managed by **Alembic** (the API runs `alembic upgrade head` on start).
+
+## What works in Phase 2 (ingestion automation)
+
+- **Import by identifier/URL** — paste a DOI, arXiv ID, PMID, ISBN, or URL; metadata
+  is fetched via the **Zotero translation-server** (600+ translators) and added as a
+  reference, with **dedup by DOI** within the library.
+- **PDF → metadata** — **GROBID** extracts title/authors/DOI/abstract/year from a PDF;
+  "Add from PDF" creates a reference from an upload, and "Fill metadata from PDF"
+  populates an existing one.
+- **Merge** duplicate references (moves PDFs + notes, then removes the duplicate).
+- **Mobile capture** — the PWA's Web Share Target lets you share a URL/DOI from a phone
+  straight into a project.
+
+> Phase 2 adds two services to `docker-compose.yml`: `translation-server` (light) and
+> `grobid` (heavy, ~4 GB RAM). Bring them up with `docker compose up -d` (GROBID takes a
+> minute to load models). translation-server needs outbound internet to fetch metadata.
 
 ## Enabling Authentik (production auth)
 
