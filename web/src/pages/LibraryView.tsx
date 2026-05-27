@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import type { AuditEvent, Group, ImportResult, Item, Library, Share } from "../types";
+import type { AuditEvent, Group, ImportResult, Item, Library, SearchMode, Share } from "../types";
 
 const CSL_TYPES = [
   "article-journal",
@@ -20,6 +20,8 @@ export default function LibraryView() {
   const [items, setItems] = useState<Item[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
+  const [mode, setMode] = useState<SearchMode>("keyword");
+  const [reindexMsg, setReindexMsg] = useState("");
   const [err, setErr] = useState("");
   const [imp, setImp] = useState<ImportResult | null>(null);
   const [activity, setActivity] = useState<AuditEvent[]>([]);
@@ -48,6 +50,30 @@ export default function LibraryView() {
         setTotal(r.total);
       })
       .catch((e) => setErr(String(e)));
+
+  // Browse (empty query) and keyword mode use the FTS list endpoint; semantic/hybrid use
+  // the dedicated /search endpoint (pgvector + RRF).
+  const runSearch = (query: string, m: SearchMode = mode) => {
+    if (!query.trim() || m === "keyword") return loadItems(query);
+    return api
+      .searchItems(libId, query, m)
+      .then((r) => {
+        setItems(r.items);
+        setTotal(r.total);
+      })
+      .catch((e) => setErr(String(e)));
+  };
+
+  const doReindex = async () => {
+    setReindexMsg("Reindexing embeddings…");
+    try {
+      const r = await api.reindexLibrary(libId);
+      setReindexMsg(`Embedded ${r.embedded} of ${r.items} references.`);
+    } catch (e) {
+      setReindexMsg("");
+      setErr(String(e));
+    }
+  };
 
   const loadMeta = async () => {
     try {
@@ -179,7 +205,13 @@ export default function LibraryView() {
               Export .bib
             </button>
           </a>
+          {canEdit && (
+            <button className="secondary" type="button" onClick={doReindex}>
+              Reindex search
+            </button>
+          )}
         </div>
+        {reindexMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{reindexMsg}</p>}
         {imp && (
           <p className={imp.key_collisions.length ? "warn" : "muted"} style={{ marginTop: "0.5rem" }}>
             Imported {imp.imported} entr{imp.imported === 1 ? "y" : "ies"} from {imp.filename}.
@@ -243,13 +275,26 @@ export default function LibraryView() {
         <div className="row">
           <input
             className="grow"
-            placeholder="Search titles…"
+            placeholder={mode === "keyword" ? "Search title, abstract, authors, PDF text…" : "Search by meaning…"}
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
-              loadItems(e.target.value);
+              runSearch(e.target.value);
             }}
           />
+          <select
+            value={mode}
+            onChange={(e) => {
+              const m = e.target.value as SearchMode;
+              setMode(m);
+              runSearch(q, m);
+            }}
+            title="keyword = full-text · semantic = meaning · hybrid = both"
+          >
+            <option value="keyword">keyword</option>
+            <option value="semantic">semantic</option>
+            <option value="hybrid">hybrid</option>
+          </select>
           <span className="muted">{total} references</span>
         </div>
         <div style={{ marginTop: "0.5rem" }}>

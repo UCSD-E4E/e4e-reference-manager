@@ -95,3 +95,16 @@ export interface ImportResult {
   imported: number;
   key_collisions: string[];
 }
+
+export type SearchMode = "keyword" | "semantic" | "hybrid";
+
+export interface Tag {
+  id: string;
+  name: string;
+  source: "manual" | "ml";
+}
+
+export interface SuggestedTags {
+  suggestions: string[];
+  applied: Tag[];
+}

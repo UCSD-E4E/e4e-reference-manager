@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
-import type { AuditEvent, Item, Note } from "../types";
+import type { AuditEvent, Item, Note, Tag } from "../types";
 
 function authorsText(csl: Record<string, unknown>): string {
   const authors = csl.author as Array<{ family?: string; given?: string }> | undefined;
@@ -19,6 +19,10 @@ export default function ItemView() {
   const [noteBody, setNoteBody] = useState("");
   const [err, setErr] = useState("");
   const [viewUrl, setViewUrl] = useState<string | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [suggested, setSuggested] = useState<string[]>([]);
+  const [summary, setSummary] = useState("");
+  const [mlBusy, setMlBusy] = useState("");
 
   const reload = async () => {
     try {
@@ -26,6 +30,7 @@ export default function ItemView() {
       setItem(it);
       setNotes(await api.listNotes(itemId));
       setHistory(await api.itemHistory(itemId));
+      setTags(await api.listItemTags(itemId));
       const lib = await api.getLibrary(it.library_id);
       setCanEdit(lib.my_access === "edit" || lib.my_access === "manage");
     } catch (e) {
@@ -89,6 +94,40 @@ export default function ItemView() {
     }
   };
 
+  const suggestTags = async () => {
+    setMlBusy("Asking the model…");
+    try {
+      const r = await api.suggestTags(itemId, false);
+      setSuggested(r.suggestions);
+      setMlBusy(r.suggestions.length ? "" : "No suggestions (is Ollama running?).");
+    } catch (e) {
+      setMlBusy("");
+      setErr(String(e));
+    }
+  };
+
+  const applySuggested = async () => {
+    try {
+      await api.suggestTags(itemId, true);
+      setSuggested([]);
+      setTags(await api.listItemTags(itemId));
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
+  const genSummary = async () => {
+    setMlBusy("Summarizing…");
+    try {
+      const r = await api.summarizeItem(itemId);
+      setSummary(r.summary || "(no summary — is Ollama running?)");
+      setMlBusy("");
+    } catch (e) {
+      setMlBusy("");
+      setErr(String(e));
+    }
+  };
+
   if (!item)
     return <p className="muted">{err ? <span className="error">{err}</span> : "Loading…"}</p>;
 
@@ -113,6 +152,49 @@ export default function ItemView() {
         {item.doi && (
           <p className="muted">
             DOI: <a href={`https://doi.org/${item.doi}`}>{item.doi}</a>
+          </p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Tags &amp; summary</h2>
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          {tags.length === 0 && <span className="muted">No tags yet.</span>}
+          {tags.map((t) => (
+            <span className="tag" key={t.id} title={t.source === "ml" ? "suggested by ML" : "manual"}>
+              {t.name}
+              {t.source === "ml" ? " ✨" : ""}
+            </span>
+          ))}
+        </div>
+        {canEdit && (
+          <div className="row" style={{ marginTop: "0.5rem" }}>
+            <button className="secondary" type="button" onClick={suggestTags}>
+              Suggest tags
+            </button>
+            <button className="secondary" type="button" onClick={genSummary}>
+              Generate summary
+            </button>
+            {mlBusy && <span className="muted">{mlBusy}</span>}
+          </div>
+        )}
+        {suggested.length > 0 && (
+          <div style={{ marginTop: "0.5rem" }}>
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              {suggested.map((s) => (
+                <span className="tag" key={s}>
+                  {s}
+                </span>
+              ))}
+            </div>
+            <button type="button" style={{ marginTop: "0.5rem" }} onClick={applySuggested}>
+              Add these tags
+            </button>
+          </div>
+        )}
+        {summary && (
+          <p className="note-body" style={{ marginTop: "0.5rem" }}>
+            {summary}
           </p>
         )}
       </div>

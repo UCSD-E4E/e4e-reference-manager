@@ -7,7 +7,10 @@ import type {
   ItemList,
   Library,
   Note,
+  SearchMode,
   Share,
+  SuggestedTags,
+  Tag,
   User,
 } from "./types";
 
@@ -45,6 +48,10 @@ export const api = {
 
   listItems: (libId: string, q = "") =>
     req<ItemList>(`/libraries/${libId}/items${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  searchItems: (libId: string, q: string, mode: SearchMode) =>
+    req<ItemList>(`/libraries/${libId}/search?q=${encodeURIComponent(q)}&mode=${mode}`),
+  reindexLibrary: (libId: string) =>
+    req<{ items: number; embedded: number }>(`/libraries/${libId}/reindex`, { method: "POST" }),
   getItem: (id: string) => req<Item>(`/items/${id}`),
   createItem: (libId: string, citation_key: string, type: string, csl_json: object) =>
     req<Item>(`/libraries/${libId}/items`, {
@@ -128,4 +135,11 @@ export const api = {
       `/items/${itemId}/extract-metadata?apply=${apply}`,
       { method: "POST" },
     ),
+
+  // Local ML (Phase 3): tags + summaries
+  listItemTags: (itemId: string) => req<Tag[]>(`/items/${itemId}/tags`),
+  suggestTags: (itemId: string, apply: boolean) =>
+    req<SuggestedTags>(`/items/${itemId}/suggest-tags?apply=${apply}`, { method: "POST" }),
+  summarizeItem: (itemId: string) =>
+    req<{ summary: string }>(`/items/${itemId}/summary`, { method: "POST" }),
 };
