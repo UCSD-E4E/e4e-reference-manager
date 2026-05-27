@@ -96,6 +96,34 @@ service. `cp .env.example .env` first if you haven't.
 > `grobid` (heavy, ~4 GB RAM). Bring them up with `docker compose up -d` (GROBID takes a
 > minute to load models). translation-server needs outbound internet to fetch metadata.
 
+## What works in Phase 3 (search & local ML)
+
+- **Full-text search** — `GET /libraries/{id}/items?q=` is Postgres FTS over **title,
+  abstract, authors, and PDF body text** (stemmed, case-insensitive), ranked title >
+  metadata > PDF body. PDF text is extracted with **PyMuPDF** on upload and cached on the
+  attachment (re-run with `POST /attachments/{id}/extract-text`).
+- **Semantic + hybrid search** — `GET /libraries/{id}/search?q=&mode=keyword|semantic|hybrid`.
+  Each reference is embedded (title+abstract) via **Ollama** into **pgvector**; semantic
+  mode is cosine-distance ANN (HNSW index), hybrid fuses keyword + semantic with
+  reciprocal-rank fusion. `POST /libraries/{id}/reindex` backfills embeddings (after a
+  bulk import, or once Ollama is available).
+- **LLM auto-tagging & summaries** — `POST /items/{id}/suggest-tags` (add `?apply=true`
+  to persist them as `ml`-sourced tags), `GET /items/{id}/tags`, and
+  `POST /items/{id}/summary`. Backed by Ollama (`qwen2.5:3b`).
+
+> Phase 3 adds the **`ollama`** service. Everything degrades gracefully if Ollama is
+> down (keyword search keeps working; tags/summaries return empty), but to enable the ML
+> features pull the models once (needs outbound internet):
+>
+> ```bash
+> docker compose exec ollama ollama pull nomic-embed-text   # embeddings (768-dim)
+> docker compose exec ollama ollama pull qwen2.5:3b          # tagging + summaries
+> ```
+>
+> Config knobs (`.env`): `REFMAN_OLLAMA_URL`, `REFMAN_EMBEDDING_MODEL`,
+> `REFMAN_EMBEDDING_DIM` (must match the model and the `item.embedding` column width —
+> changing it needs a migration + reindex), `REFMAN_LLM_MODEL`.
+
 ## Enabling Authentik (production auth)
 
 Set in `.env`:
@@ -117,9 +145,12 @@ single-origin Caddy reverse proxy land in Phase 1.)
 api/            FastAPI backend (app/, Dockerfile, pyproject.toml)
   app/
     models.py   SQLAlchemy models
-    routers/    libraries, items, bib import/export, attachments, auth, health
+    routers/    libraries, items, search, ml, bib, attachments, ingest, collab, notes, auth, health
     bibtex.py   BibTeX <-> CSL-JSON conversion
     storage.py  S3/SeaweedFS helpers
+    pdf.py      PDF text extraction (PyMuPDF)
+    embeddings.py  Ollama embeddings for semantic search
+    llm.py      Ollama auto-tagging + summaries
 web/            React + TS + Vite PWA (src/, vite.config.ts)
 deploy/         service configs (SeaweedFS S3 identity)
 docker-compose.yml

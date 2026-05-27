@@ -1,6 +1,5 @@
-# Phase 0 stack: Postgres+pgvector, SeaweedFS (S3), and the API.
-# Frontend (web), Caddy proxy, and ML services (Ollama/GROBID/translation-server)
-# are added in later phases.
+# Stack: Postgres+pgvector, SeaweedFS (S3), the API + web, ingestion services
+# (translation-server, GROBID), and local ML (Ollama). Caddy proxy is added later.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -49,6 +48,20 @@ services:
       - "8070:8070"
     restart: unless-stopped
 
+  # Local ML runtime: embeddings (nomic-embed-text) + LLM tagging/summaries (qwen2.5:3b).
+  # CPU-only by default. After first start, pull the models (needs outbound internet):
+  #   docker compose exec ollama ollama pull nomic-embed-text
+  #   docker compose exec ollama ollama pull qwen2.5:3b
+  # To use the GPU node on Kubernetes later, schedule this onto the GPU and keep the API
+  # pointed at REFMAN_OLLAMA_URL. Models persist in the `ollamadata` volume.
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollamadata:/root/.ollama
+    restart: unless-stopped
+
   api:
     build: ./api
     env_file:
@@ -60,6 +73,7 @@ services:
       REFMAN_S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
       REFMAN_TRANSLATION_SERVER_URL: http://translation-server:1969
       REFMAN_GROBID_URL: http://grobid:8070
+      REFMAN_OLLAMA_URL: http://ollama:11434
     ports:
       - "8000:8000"
     volumes:
@@ -90,4 +104,5 @@ services:
 volumes:
   pgdata:
   seaweeddata:
+  ollamadata:
   web_node_modules:
