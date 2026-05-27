@@ -126,10 +126,24 @@ docker-compose.yml
 plan.md         design & roadmap
 ```
 
+## Tests
+
+Backend tests use pytest + pytest-asyncio against an ASGI client and a dedicated
+`refman_test` Postgres DB (created/dropped automatically; external services are
+monkeypatched). From inside the dev container:
+
+```bash
+cd api && uv run pytest          # full suite
+uv run pytest tests/test_unit.py # fast, no DB
+```
+
+**We work test-first (TDD) from Phase 3 on:** write a failing test, implement to green,
+then refactor. Run the suite before committing each milestone.
+
 ## Notes for developers
 
-- **Schema**: Phase 0 bootstraps tables via SQLAlchemy `create_all` on startup. Alembic
-  migrations are introduced when the schema stabilizes (Phase 1).
+- **Schema** is managed by **Alembic**; the API container runs `alembic upgrade head`
+  on start. Add a migration with `uv run alembic revision --autogenerate -m "…"`.
 - **API & web** hot-reload in Compose (source is bind-mounted).
 - The frontend talks to the API at `VITE_API_URL` (default `http://localhost:8000`) with
   CORS + credentials. A single-origin Caddy setup comes with production hardening.

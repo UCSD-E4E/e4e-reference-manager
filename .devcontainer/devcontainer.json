@@ -13,7 +13,10 @@
   // Mounted to the vscode user's home; your uid (1000) matches, so read/write works.
   "mounts": [
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind"
+    "source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind",
+    // SSH keys for signed commits. Mounted at the host path the signing key config
+    // references (/home/chris/.ssh/id_ed25519.pub). Host-specific, like the path pin.
+    "source=${localEnv:HOME}/.ssh,target=/home/chris/.ssh,type=bind,consistency=cached"
   ],
 
   "features": {

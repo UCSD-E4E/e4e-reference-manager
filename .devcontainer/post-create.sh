@@ -13,6 +13,14 @@ echo "==> Syncing API dependencies (creates api/.venv)"
 (cd api && uv sync)
 
 echo "==> Installing web dependencies"
+# The `web` compose service mounts a named volume at web/node_modules, so Docker
+# creates that mountpoint on the host bind dir as root. On a fresh checkout that
+# leaves an empty root-owned dir here, which breaks `npm install` (run as vscode)
+# with EACCES. Reclaim it before installing.
+if [ -d web/node_modules ] && [ ! -O web/node_modules ]; then
+  echo "    Reclaiming root-owned web/node_modules mountpoint"
+  sudo chown "$(id -u):$(id -g)" web/node_modules
+fi
 (cd web && npm install --no-audit --no-fund)
 
 echo "==> Dev container ready."
