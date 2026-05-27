@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .auth import register_oidc
 from .config import get_settings
 from .routers import (
+    annotations,
     attachments,
     auth,
     bib,
@@ -61,6 +62,7 @@ app.include_router(items.router)
 app.include_router(search.router)
 app.include_router(bib.router)
 app.include_router(attachments.router)
+app.include_router(annotations.router)
 app.include_router(collab.router)
 app.include_router(notes.router)
 app.include_router(ingest.router)

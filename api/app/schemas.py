@@ -153,6 +153,37 @@ class NoteOut(BaseModel):
     updated_at: datetime
 
 
+# --- Annotations (Phase 4) ---
+
+
+class AnnotationCreate(BaseModel):
+    page: int = 1
+    rects: list[dict] = Field(default_factory=list)  # [{x,y,w,h}] normalized 0..1
+    color: str = "#ffd54f"
+    quote: str = ""
+    comment: str = ""
+
+
+class AnnotationUpdate(BaseModel):
+    color: str | None = None
+    comment: str | None = None
+    rects: list[dict] | None = None
+
+
+class AnnotationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    attachment_id: uuid.UUID
+    author_id: uuid.UUID | None
+    page: int
+    rects: list[dict]
+    color: str
+    quote: str
+    comment: str
+    created_at: datetime
+    updated_at: datetime
+
+
 # --- Audit / history ---
 
 

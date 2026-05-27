@@ -287,6 +287,35 @@ class Note(Base):
     )
 
 
+class Annotation(Base):
+    """A highlight/comment anchored to a location in a PDF Attachment (Phase 4).
+
+    Distinct from a Note (which is item-level free text): an Annotation is pinned to a
+    page + rectangles on a specific PDF.
+    """
+
+    __tablename__ = "annotation"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    attachment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("attachment.id", ondelete="CASCADE"), index=True
+    )
+    author_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
+    )
+    page: Mapped[int] = mapped_column(Integer, default=1)  # 1-based PDF page
+    # Highlight rectangles [{x, y, w, h}] in normalized 0..1 page-relative coords, so they
+    # survive zoom/width changes. Empty for a page-level (rect-less) comment.
+    rects: Mapped[list] = mapped_column(JSONB, default=list)
+    color: Mapped[str] = mapped_column(String(16), default="#ffd54f")
+    quote: Mapped[str] = mapped_column(Text, default="")  # selected text, for context
+    comment: Mapped[str] = mapped_column(Text, default="")  # optional note on the highlight
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class AuditEvent(Base):
     """Append-only history. One row per mutation; `before`/`after` are JSON snapshots."""
 
