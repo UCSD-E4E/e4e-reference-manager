@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import embeddings
 from ..audit import item_snapshot, record
 from ..auth import get_current_user
 from ..bibtex import year_from_csl
@@ -69,6 +70,9 @@ async def create_item(
 ):
     item = Item(library_id=lib.id, citation_key=payload.citation_key, type=payload.type)
     _denormalize(item, payload.csl_json)
+    vec = await embeddings.embed_item_csl(payload.csl_json)  # best-effort; None if Ollama down
+    if vec is not None:
+        item.embedding = vec
     session.add(item)
     await session.flush()
     record(
@@ -110,6 +114,9 @@ async def update_item(
         item.type = payload.type
     if payload.csl_json is not None:
         _denormalize(item, payload.csl_json)
+        vec = await embeddings.embed_item_csl(payload.csl_json)
+        if vec is not None:
+            item.embedding = vec
     item.version += 1
     record(
         session,

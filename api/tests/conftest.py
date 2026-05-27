@@ -39,6 +39,7 @@ def _prepare_database():
         await admin.dispose()
         eng = create_async_engine(TEST_URL)
         async with eng.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
         await eng.dispose()
 

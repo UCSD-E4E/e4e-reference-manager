@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     translation_server_url: str = "http://translation-server:1969"
     grobid_url: str = "http://grobid:8070"
 
+    # Local ML: Ollama (Phase 3). embedding_dim must match embedding_model's output and
+    # the `item.embedding` column width — changing it requires a migration + reindex.
+    ollama_url: str = "http://ollama:11434"
+    embedding_model: str = "nomic-embed-text"
+    embedding_dim: int = 768
+    llm_model: str = "qwen2.5:3b"
+
     # Sessions
     session_secret: str = "dev-only-change-me"
 

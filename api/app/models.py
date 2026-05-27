@@ -29,6 +29,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from pgvector.sqlalchemy import Vector
+
+# Embedding dimensionality of the configured Ollama model (nomic-embed-text = 768).
+# This is the on-disk width of item.embedding; changing models means a migration.
+EMBEDDING_DIM = 768
+
 
 class Base(DeclarativeBase):
     pass
@@ -189,6 +195,10 @@ class Item(Base):
         nullable=True,
     )
 
+    # Semantic search (Phase 3c): one embedding per item over title+abstract. Nullable —
+    # items created while Ollama is down stay null until the reindex endpoint backfills.
+    embedding = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+
     version: Mapped[int] = mapped_column(Integer, default=1)  # optimistic locking
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -203,6 +213,14 @@ class Item(Base):
         # so this index is non-unique.
         Index("ix_item_library_citation_key", "library_id", "citation_key"),
         Index("ix_item_search_tsv", "search_tsv", postgresql_using="gin"),
+        # Approximate-NN index for cosine distance (pgvector HNSW).
+        Index(
+            "ix_item_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
 

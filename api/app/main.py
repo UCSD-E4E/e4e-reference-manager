@@ -11,7 +11,18 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import register_oidc
 from .config import get_settings
-from .routers import attachments, auth, bib, collab, health, ingest, items, libraries, notes
+from .routers import (
+    attachments,
+    auth,
+    bib,
+    collab,
+    health,
+    ingest,
+    items,
+    libraries,
+    notes,
+    search,
+)
 from .storage import ensure_bucket
 
 logger = logging.getLogger("refman")
@@ -46,6 +57,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(libraries.router)
 app.include_router(items.router)
+app.include_router(search.router)
 app.include_router(bib.router)
 app.include_router(attachments.router)
 app.include_router(collab.router)

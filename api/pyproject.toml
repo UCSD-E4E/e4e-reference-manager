@@ -18,6 +18,7 @@ dependencies = [
     "bibtexparser>=1.4,<2.0",
     "python-multipart>=0.0.9",
     "pymupdf>=1.27.2.3",
+    "pgvector>=0.4.2",
 ]
 
 [dependency-groups]
