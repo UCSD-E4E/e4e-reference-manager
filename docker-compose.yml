@@ -34,8 +34,10 @@ services:
       retries: 20
 
   # Metadata import: 600+ Zotero translators (DOI/arXiv/PMID/ISBN/URL -> CSL-JSON)
+  # NOTE: `latest`/`2.0.6` are arm64-only; `2.0.4` is the newest amd64 tag. Pinned for
+  # x86_64 hosts. On Apple Silicon / arm64, switch to `:latest` (or build from source).
   translation-server:
-    image: zotero/translation-server:latest
+    image: zotero/translation-server:2.0.4
     ports:
       - "1969:1969"
     restart: unless-stopped
