@@ -1,6 +1,6 @@
 """Pure unit tests (no DB, no network) for bibtex / ingest / grobid logic."""
 from app.bibtex import build_bibtex, parse_bibtex, year_from_csl
-from app.grobid import parse_tei_header
+from app.grobid import extract_header_csl, parse_tei_header
 from app.ingest import gen_citation_key, normalize_doi
 
 SAMPLE_BIB = """
@@ -86,3 +86,29 @@ def test_grobid_parse_tei_header():
     assert csl["DOI"] == "10.1000/coral.2021"
     assert csl["abstract"].startswith("We apply deep learning")
     assert year_from_csl(csl) == 2021
+
+
+_TEI = """<TEI xmlns="http://www.tei-c.org/ns/1.0"><teiHeader><fileDesc>
+<titleStmt><title>Sample Paper</title></titleStmt>
+<sourceDesc><biblStruct><analytic>
+<author><persName><forename type="first">A</forename><surname>Smith</surname></persName></author>
+</analytic></biblStruct></sourceDesc></fileDesc></teiHeader></TEI>"""
+
+
+async def test_extract_header_requests_tei_not_bibtex(monkeypatch):
+    """Regression: GROBID returns BibTeX unless we ask for TEI (Accept: application/xml)."""
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        text = _TEI
+
+    async def fake_post(self, url, **kwargs):
+        captured["headers"] = kwargs.get("headers") or {}
+        return FakeResp()
+
+    monkeypatch.setattr("httpx.AsyncClient.post", fake_post)
+    csl = await extract_header_csl(b"%PDF-1.4 fake")
+    assert captured["headers"].get("Accept") == "application/xml"
+    assert csl["title"] == "Sample Paper"
+    assert csl["author"][0]["family"] == "Smith"

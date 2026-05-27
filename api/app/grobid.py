@@ -64,6 +64,7 @@ async def extract_header_csl(pdf: bytes) -> dict:
         try:
             r = await client.post(
                 f"{base}/api/processHeaderDocument",
+                headers={"Accept": "application/xml"},  # else GROBID returns BibTeX
                 files={"input": ("document.pdf", pdf, "application/pdf")},
                 data={"consolidateHeader": "0"},
             )
