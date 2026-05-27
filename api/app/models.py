@@ -208,6 +208,8 @@ class Item(Base):
     attachments: Mapped[list["Attachment"]] = relationship(
         back_populates="item", cascade="all, delete-orphan", lazy="selectin"
     )
+    tags: Mapped[list["Tag"]] = relationship(secondary=item_tag, lazy="selectin")
+
     __table_args__ = (
         # Citation keys are preserved verbatim; collisions are flagged, not blocked,
         # so this index is non-unique.

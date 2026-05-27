@@ -83,6 +83,25 @@ class ImportResult(BaseModel):
     key_collisions: list[str] = Field(default_factory=list)
 
 
+# --- Tags / ML (Phase 3d) ---
+
+
+class TagOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    source: str  # manual | ml
+
+
+class SuggestedTags(BaseModel):
+    suggestions: list[str]
+    applied: list[TagOut] = Field(default_factory=list)
+
+
+class SummaryOut(BaseModel):
+    summary: str
+
+
 # --- Collaboration: groups, members, shares ---
 
 

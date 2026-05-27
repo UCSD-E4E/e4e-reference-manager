@@ -20,6 +20,7 @@ from .routers import (
     ingest,
     items,
     libraries,
+    ml,
     notes,
     search,
 )
@@ -63,3 +64,4 @@ app.include_router(attachments.router)
 app.include_router(collab.router)
 app.include_router(notes.router)
 app.include_router(ingest.router)
+app.include_router(ml.router)
