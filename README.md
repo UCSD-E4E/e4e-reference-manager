@@ -124,6 +124,17 @@ service. `cp .env.example .env` first if you haven't.
 > `REFMAN_EMBEDDING_DIM` (must match the model and the `item.embedding` column width —
 > changing it needs a migration + reindex), `REFMAN_LLM_MODEL`.
 
+## What works in Phase 4 (PDF annotations)
+
+- **Highlights & comments on PDFs** — select text in the in-app PDF.js viewer and click
+  "Highlight selection" to anchor a colored highlight (with an optional comment) to that
+  spot. Anchors are stored as a page number + normalized rectangles (0..1), so they hold
+  up across zoom/width. Highlights render as an overlay and are listed under the viewer
+  (jump-to-page + delete). Backed by the `annotation` table and
+  `GET/POST /attachments/{id}/annotations`, `PATCH/DELETE /annotations/{id}`.
+- **RBAC**: library `view` to read, `edit` to create, author-or-manager to edit/delete;
+  every change is written to the audit log (`entity_type=annotation`).
+
 ## Enabling Authentik (production auth)
 
 Set in `.env`:

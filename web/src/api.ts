@@ -1,4 +1,6 @@
 import type {
+  Annotation,
+  AnnotationRect,
   AuditEvent,
   Group,
   ImportResult,
@@ -80,6 +82,18 @@ export const api = {
   attachmentSignedUrl: (attId: string) =>
     req<{ url: string; content_type: string }>(`/attachments/${attId}/url`),
   attachmentDownloadUrl: (attId: string) => `${API_URL}/attachments/${attId}/download`,
+
+  // PDF annotations (Phase 4)
+  listAnnotations: (attId: string) => req<Annotation[]>(`/attachments/${attId}/annotations`),
+  createAnnotation: (
+    attId: string,
+    body: { page: number; rects: AnnotationRect[]; color?: string; quote?: string; comment?: string },
+  ) =>
+    req<Annotation>(`/attachments/${attId}/annotations`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteAnnotation: (id: string) => req<void>(`/annotations/${id}`, { method: "DELETE" }),
 
   // Groups & members
   listGroups: () => req<Group[]>("/groups"),

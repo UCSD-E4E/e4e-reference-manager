@@ -108,3 +108,23 @@ export interface SuggestedTags {
   suggestions: string[];
   applied: Tag[];
 }
+
+export interface AnnotationRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Annotation {
+  id: string;
+  attachment_id: string;
+  author_id: string | null;
+  page: number;
+  rects: AnnotationRect[];
+  color: string;
+  quote: string;
+  comment: string;
+  created_at: string;
+  updated_at: string;
+}

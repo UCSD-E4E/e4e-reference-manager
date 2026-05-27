@@ -19,6 +19,7 @@ export default function ItemView() {
   const [noteBody, setNoteBody] = useState("");
   const [err, setErr] = useState("");
   const [viewUrl, setViewUrl] = useState<string | null>(null);
+  const [viewAtt, setViewAtt] = useState<string | null>(null);
   const [tags, setTags] = useState<Tag[]>([]);
   const [suggested, setSuggested] = useState<string[]>([]);
   const [summary, setSummary] = useState("");
@@ -70,6 +71,7 @@ export default function ItemView() {
     try {
       const { url } = await api.attachmentSignedUrl(attId);
       setViewUrl(url);
+      setViewAtt(attId);
     } catch (e) {
       setErr(String(e));
     }
@@ -239,7 +241,7 @@ export default function ItemView() {
 
       {viewUrl && (
         <div className="card">
-          <PdfViewer url={viewUrl} />
+          <PdfViewer url={viewUrl} attachmentId={viewAtt ?? undefined} canEdit={canEdit} />
         </div>
       )}
 
