@@ -17,6 +17,7 @@ from .routers import (
     auth,
     bib,
     collab,
+    collections,
     health,
     ingest,
     items,
@@ -61,6 +62,7 @@ app.include_router(libraries.router)
 app.include_router(items.router)
 app.include_router(search.router)
 app.include_router(bib.router)
+app.include_router(collections.router)
 app.include_router(attachments.router)
 app.include_router(annotations.router)
 app.include_router(collab.router)

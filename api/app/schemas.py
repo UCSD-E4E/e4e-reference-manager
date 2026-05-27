@@ -83,6 +83,23 @@ class ImportResult(BaseModel):
     key_collisions: list[str] = Field(default_factory=list)
 
 
+# --- Collections (Phase 4) ---
+
+
+class CollectionCreate(BaseModel):
+    name: str
+    parent_id: uuid.UUID | None = None
+
+
+class CollectionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    library_id: uuid.UUID
+    parent_id: uuid.UUID | None
+    name: str
+    created_at: datetime
+
+
 # --- Tags / ML (Phase 3d) ---
 
 
