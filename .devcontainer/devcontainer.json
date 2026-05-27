@@ -6,8 +6,9 @@
   // Same absolute path as the host (see docker-compose.dev.yml) so Claude Code's
   // path-keyed memory/history carry over unchanged.
   "workspaceFolder": "/home/chris/Repos/school/e4e/e4e-reference-manager",
-  // Bring up the whole app alongside the dev container.
-  "runServices": ["postgres", "seaweedfs", "api", "web"],
+  // Bring up the whole app alongside the dev container. (grobid is ~4GB and slow to
+  // pull/load the first time, but then a rebuild gives you the full stack.)
+  "runServices": ["postgres", "seaweedfs", "api", "web", "translation-server", "grobid"],
 
   // Share host Claude Code state so auth, settings, and project memory persist.
   // Mounted to the vscode user's home; your uid (1000) matches, so read/write works.
