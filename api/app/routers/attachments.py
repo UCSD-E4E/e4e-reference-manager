@@ -4,16 +4,26 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
 from ..db import get_session
 from ..deps import item_editor, library_access_level
-from ..models import Attachment, Item, Library, User
+from ..models import _ACCESS_RANK, Attachment, Item, Library, User
+from ..pdf import extract_pdf_text
 from ..schemas import AttachmentOut
-from ..storage import presigned_get_url, upload_bytes
+from ..storage import download_bytes, presigned_get_url, upload_bytes
 
 router = APIRouter(tags=["attachments"])
+
+
+async def _refresh_item_pdf_text(session: AsyncSession, item: Item) -> None:
+    """Recompute the owning item's concatenated PDF text (drives the FTS tsvector)."""
+    rows = await session.execute(
+        select(Attachment.text).where(Attachment.item_id == item.id)
+    )
+    item.pdf_text = "\n\n".join(t for (t,) in rows.all() if t)
 
 
 @router.post("/items/{item_id}/attachments", response_model=AttachmentOut, status_code=201)
@@ -31,6 +41,11 @@ async def upload_attachment(
 
     await run_in_threadpool(upload_bytes, key, data, content_type)
 
+    text = (
+        await run_in_threadpool(extract_pdf_text, data)
+        if content_type == "application/pdf"
+        else None
+    )
     att = Attachment(
         item_id=item.id,
         filename=file.filename or "document.pdf",
@@ -38,8 +53,11 @@ async def upload_attachment(
         size=len(data),
         sha256=sha256,
         storage_key=key,
+        text=text,
     )
     session.add(att)
+    await session.flush()
+    await _refresh_item_pdf_text(session, item)
     await session.commit()
     await session.refresh(att)
     return att
@@ -80,3 +98,31 @@ async def download_attachment(
     att = await _owned_attachment(attachment_id, user, session)
     url = await run_in_threadpool(presigned_get_url, att.storage_key, att.filename)
     return RedirectResponse(url)
+
+
+@router.post("/attachments/{attachment_id}/extract-text", response_model=AttachmentOut)
+async def reextract_text(
+    attachment_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Re-download the attachment and refresh its cached text + the item's FTS index.
+    Requires edit access on the library (it mutates the search index)."""
+    att = await _owned_attachment(attachment_id, user, session)
+    item = await session.get(Item, att.item_id)
+    lib = await session.get(Library, item.library_id)
+    level = await library_access_level(session, user, lib)
+    if _ACCESS_RANK.get(level or "", 0) < _ACCESS_RANK["edit"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Edit access required")
+
+    data = await run_in_threadpool(download_bytes, att.storage_key)
+    att.text = (
+        await run_in_threadpool(extract_pdf_text, data)
+        if att.content_type == "application/pdf"
+        else None
+    )
+    await session.flush()
+    await _refresh_item_pdf_text(session, item)
+    await session.commit()
+    await session.refresh(att)
+    return att

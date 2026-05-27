@@ -15,28 +15,48 @@ from ..schemas import AuditEventOut, ItemCreate, ItemList, ItemOut, ItemUpdate
 router = APIRouter(tags=["items"])
 
 
+def _search_text(item: Item, csl: dict) -> str:
+    """The searchable body (everything but the title, which is weighted separately)."""
+    parts: list[str] = []
+    if csl.get("abstract"):
+        parts.append(str(csl["abstract"]))
+    for author in csl.get("author") or []:
+        name = " ".join(p for p in (author.get("given"), author.get("family")) if p)
+        if name:
+            parts.append(name)
+    for key in ("container-title", "publisher"):
+        if csl.get(key):
+            parts.append(str(csl[key]))
+    if item.citation_key:
+        parts.append(item.citation_key)
+    return "\n".join(parts)
+
+
 def _denormalize(item: Item, csl: dict) -> None:
     item.csl_json = csl
     item.title = (csl.get("title") or "").strip()
     item.year = year_from_csl(csl)
     item.doi = csl.get("DOI")
+    item.search_text = _search_text(item, csl)
 
 
 @router.get("/libraries/{library_id}/items", response_model=ItemList)
 async def list_items(
     lib: Library = Depends(library_viewer),
     session: AsyncSession = Depends(get_session),
-    q: str | None = Query(None, description="Search in title"),
+    q: str | None = Query(None, description="Full-text search (title, abstract, authors)"),
     limit: int = Query(50, le=200),
     offset: int = 0,
 ):
     base = select(Item).where(Item.library_id == lib.id)
-    if q:
-        base = base.where(Item.title.ilike(f"%{q}%"))
+    order = Item.created_at.desc()
+    if q and q.strip():
+        # Postgres full-text search: stems + lowercases, ranks title (weight A) above body.
+        tsquery = func.websearch_to_tsquery("english", q)
+        base = base.where(Item.search_tsv.op("@@")(tsquery))
+        order = func.ts_rank(Item.search_tsv, tsquery).desc()
     total = await session.scalar(select(func.count()).select_from(base.subquery()))
-    rows = await session.execute(
-        base.order_by(Item.created_at.desc()).limit(limit).offset(offset)
-    )
+    rows = await session.execute(base.order_by(order).limit(limit).offset(offset))
     return ItemList(total=total or 0, items=list(rows.scalars().all()))
 
 

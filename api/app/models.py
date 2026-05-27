@@ -14,6 +14,7 @@ from datetime import datetime
 from sqlalchemy import (
     CheckConstraint,
     Column,
+    Computed,
     DateTime,
     ForeignKey,
     Index,
@@ -25,7 +26,7 @@ from sqlalchemy import (
     Uuid,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -170,6 +171,24 @@ class Item(Base):
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     doi: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
+    # Full-text search (Phase 3a/3b). `search_text` is the metadata body (abstract,
+    # authors, container, citation key), maintained in items._denormalize; `pdf_text` is
+    # the concatenated text of the item's PDF attachments, maintained in the attachments
+    # router. `search_tsv` is a generated tsvector weighting title (A) > metadata (B) >
+    # PDF body (C). PDF body is capped to keep the tsvector under Postgres' ~1 MiB limit.
+    search_text: Mapped[str] = mapped_column(Text, default="")
+    pdf_text: Mapped[str] = mapped_column(Text, default="")
+    search_tsv = mapped_column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('english', coalesce(title, '')), 'A') || "
+            "setweight(to_tsvector('english', coalesce(search_text, '')), 'B') || "
+            "setweight(to_tsvector('english', left(coalesce(pdf_text, ''), 500000)), 'C')",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
     version: Mapped[int] = mapped_column(Integer, default=1)  # optimistic locking
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -179,11 +198,11 @@ class Item(Base):
     attachments: Mapped[list["Attachment"]] = relationship(
         back_populates="item", cascade="all, delete-orphan", lazy="selectin"
     )
-
     __table_args__ = (
         # Citation keys are preserved verbatim; collisions are flagged, not blocked,
         # so this index is non-unique.
         Index("ix_item_library_citation_key", "library_id", "citation_key"),
+        Index("ix_item_search_tsv", "search_tsv", postgresql_using="gin"),
     )
 
 
@@ -197,6 +216,8 @@ class Attachment(Base):
     size: Mapped[int] = mapped_column(Integer, default=0)
     sha256: Mapped[str] = mapped_column(String(64), index=True)
     storage_key: Mapped[str] = mapped_column(String(512))
+    # Extracted plain text (PDFs), cached for full-text search (Phase 3b).
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     item: Mapped["Item"] = relationship(back_populates="attachments")
