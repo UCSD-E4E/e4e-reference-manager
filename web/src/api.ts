@@ -2,6 +2,7 @@ import type {
   Annotation,
   AnnotationRect,
   AuditEvent,
+  Collection,
   Group,
   ImportResult,
   IngestResult,
@@ -70,6 +71,20 @@ export const api = {
     return req<ImportResult>(`/libraries/${libId}/import`, { method: "POST", body: fd });
   },
   exportLibraryUrl: (libId: string) => `${API_URL}/libraries/${libId}/export.bib`,
+
+  // Collections (Phase 4)
+  listCollections: (libId: string) => req<Collection[]>(`/libraries/${libId}/collections`),
+  createCollection: (libId: string, name: string, parent_id: string | null = null) =>
+    req<Collection>(`/libraries/${libId}/collections`, {
+      method: "POST",
+      body: JSON.stringify({ name, parent_id }),
+    }),
+  deleteCollection: (id: string) => req<void>(`/collections/${id}`, { method: "DELETE" }),
+  addItemToCollection: (collId: string, itemId: string) =>
+    req<void>(`/collections/${collId}/items/${itemId}`, { method: "POST" }),
+  removeItemFromCollection: (collId: string, itemId: string) =>
+    req<void>(`/collections/${collId}/items/${itemId}`, { method: "DELETE" }),
+  exportCollectionUrl: (id: string) => `${API_URL}/collections/${id}/export.bib`,
 
   uploadAttachment: (itemId: string, file: File) => {
     const fd = new FormData();

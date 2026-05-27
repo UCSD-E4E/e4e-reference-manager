@@ -98,6 +98,14 @@ export interface ImportResult {
 
 export type SearchMode = "keyword" | "semantic" | "hybrid";
 
+export interface Collection {
+  id: string;
+  library_id: string;
+  parent_id: string | null;
+  name: string;
+  created_at: string;
+}
+
 export interface Tag {
   id: string;
   name: string;

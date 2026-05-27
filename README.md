@@ -134,6 +134,11 @@ service. `cp .env.example .env` first if you haven't.
   `GET/POST /attachments/{id}/annotations`, `PATCH/DELETE /annotations/{id}`.
 - **RBAC**: library `view` to read, `edit` to create, author-or-manager to edit/delete;
   every change is written to the audit log (`entity_type=annotation`).
+- **Collections** — group items into (nestable) folders within a library and **export a
+  single collection to `.bib`** (in addition to whole-library and per-source-`BibFile`
+  export). Create/manage collections in the project view; assign an item from its page.
+  `GET/POST /libraries/{id}/collections`, `POST/DELETE /collections/{id}/items/{itemId}`,
+  `GET /collections/{id}/export.bib`.
 
 ## Enabling Authentik (production auth)
 

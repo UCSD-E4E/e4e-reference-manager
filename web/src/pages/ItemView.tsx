@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
-import type { AuditEvent, Item, Note, Tag } from "../types";
+import type { AuditEvent, Collection, Item, Note, Tag } from "../types";
 
 function authorsText(csl: Record<string, unknown>): string {
   const authors = csl.author as Array<{ family?: string; given?: string }> | undefined;
@@ -24,6 +24,9 @@ export default function ItemView() {
   const [suggested, setSuggested] = useState<string[]>([]);
   const [summary, setSummary] = useState("");
   const [mlBusy, setMlBusy] = useState("");
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [addColl, setAddColl] = useState("");
+  const [collMsg, setCollMsg] = useState("");
 
   const reload = async () => {
     try {
@@ -32,8 +35,20 @@ export default function ItemView() {
       setNotes(await api.listNotes(itemId));
       setHistory(await api.itemHistory(itemId));
       setTags(await api.listItemTags(itemId));
+      setCollections(await api.listCollections(it.library_id));
       const lib = await api.getLibrary(it.library_id);
       setCanEdit(lib.my_access === "edit" || lib.my_access === "manage");
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
+  const addToCollection = async () => {
+    if (!addColl) return;
+    try {
+      await api.addItemToCollection(addColl, itemId);
+      const name = collections.find((c) => c.id === addColl)?.name ?? "collection";
+      setCollMsg(`Added to “${name}”.`);
     } catch (e) {
       setErr(String(e));
     }
@@ -198,6 +213,22 @@ export default function ItemView() {
           <p className="note-body" style={{ marginTop: "0.5rem" }}>
             {summary}
           </p>
+        )}
+        {canEdit && collections.length > 0 && (
+          <div className="row" style={{ marginTop: "0.5rem" }}>
+            <select value={addColl} onChange={(e) => setAddColl(e.target.value)}>
+              <option value="">Add to collection…</option>
+              {collections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button className="secondary" type="button" onClick={addToCollection} disabled={!addColl}>
+              Add
+            </button>
+            {collMsg && <span className="muted">{collMsg}</span>}
+          </div>
         )}
       </div>
 

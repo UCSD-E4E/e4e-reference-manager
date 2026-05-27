@@ -1,7 +1,16 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import type { AuditEvent, Group, ImportResult, Item, Library, SearchMode, Share } from "../types";
+import type {
+  AuditEvent,
+  Collection,
+  Group,
+  ImportResult,
+  Item,
+  Library,
+  SearchMode,
+  Share,
+} from "../types";
 
 const CSL_TYPES = [
   "article-journal",
@@ -31,6 +40,8 @@ export default function LibraryView() {
   const [shareLevel, setShareLevel] = useState("view");
   const [ingestQuery, setIngestQuery] = useState("");
   const [ingestMsg, setIngestMsg] = useState("");
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [newColl, setNewColl] = useState("");
 
   // manual add form
   const [key, setKey] = useState("");
@@ -89,11 +100,27 @@ export default function LibraryView() {
     }
   };
 
+  const loadCollections = () =>
+    api.listCollections(libId).then(setCollections).catch((e) => setErr(String(e)));
+
   useEffect(() => {
     loadMeta();
     loadItems();
+    loadCollections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [libId]);
+
+  const addCollection = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newColl.trim()) return;
+    try {
+      await api.createCollection(libId, newColl.trim());
+      setNewColl("");
+      loadCollections();
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
 
   const onImport = async (e: FormEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0];
@@ -314,6 +341,43 @@ export default function LibraryView() {
           ))}
           {items.length === 0 && <p className="muted">No references yet.</p>}
         </div>
+      </div>
+
+      <div className="card">
+        <h2>Collections</h2>
+        {collections.length === 0 && <p className="muted">No collections yet.</p>}
+        {collections.map((c) => (
+          <div className="item-row" key={c.id}>
+            <span className="grow">{c.name}</span>
+            <div className="row">
+              <a href={api.exportCollectionUrl(c.id)}>
+                <button className="secondary" type="button">
+                  Export .bib
+                </button>
+              </a>
+              {canEdit && (
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => api.deleteCollection(c.id).then(loadCollections)}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {canEdit && (
+          <form className="row" style={{ marginTop: "0.5rem" }} onSubmit={addCollection}>
+            <input
+              className="grow"
+              placeholder="New collection name…"
+              value={newColl}
+              onChange={(e) => setNewColl(e.target.value)}
+            />
+            <button type="submit">Create</button>
+          </form>
+        )}
       </div>
 
       {canManage && (
