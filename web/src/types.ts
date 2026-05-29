@@ -68,6 +68,17 @@ export interface Attachment {
   created_at: string;
 }
 
+export type ValidationStatus = "verified" | "metadata_mismatch" | "not_found" | "unverifiable";
+
+export interface Validation {
+  status: ValidationStatus;
+  source: "crossref" | "arxiv" | "none";
+  matched_title: string | null;
+  title_similarity: number | null;
+  notes: string;
+  checked_at: string;
+}
+
 export interface Item {
   id: string;
   library_id: string;
@@ -79,6 +90,7 @@ export interface Item {
   year: number | null;
   doi: string | null;
   version: number;
+  validation: Validation | null;
   created_at: string;
   updated_at: string;
   attachments: Attachment[];

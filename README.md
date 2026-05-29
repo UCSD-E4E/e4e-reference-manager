@@ -140,6 +140,27 @@ service. `cp .env.example .env` first if you haven't.
   `GET/POST /libraries/{id}/collections`, `POST/DELETE /collections/{id}/items/{itemId}`,
   `GET /collections/{id}/export.bib`.
 
+## What works in Phase 5 (source validation / anti-hallucination)
+
+LLM-generated bibliographies often include **fabricated citations** — plausible-looking
+references whose DOIs don't resolve or point to a different paper. The app can now
+verify each reference against canonical registrars:
+
+- **DOI** → Crossref `/works/{doi}` (404 ⇒ likely fabricated; resolves but title differs
+  ⇒ the DOI is real but the citation is wrong).
+- **arXiv id** → arXiv API.
+- **No identifier** → Crossref title/author search; verified only if the top hit's title
+  closely matches.
+
+Verdicts (`verified` ✓, `metadata_mismatch` ⚠, `not_found` ✗, `unverifiable` ?) are
+cached on the item, shown as a badge in the project view, and detailed on the item
+page. Endpoints: `POST /items/{id}/validate` (one item), `POST /libraries/{id}/validate`
+(batch — returns a count summary).
+
+> Validation hits external services (api.crossref.org, export.arxiv.org). Crossref's
+> polite pool is used (no API key required); the User-Agent identifies the app per
+> Crossref guidance.
+
 ## Enabling Authentik (production auth)
 
 Set in `.env`:

@@ -15,6 +15,7 @@ import type {
   SuggestedTags,
   Tag,
   User,
+  Validation,
 } from "./types";
 
 export const API_URL =
@@ -171,4 +172,16 @@ export const api = {
     req<SuggestedTags>(`/items/${itemId}/suggest-tags?apply=${apply}`, { method: "POST" }),
   summarizeItem: (itemId: string) =>
     req<{ summary: string }>(`/items/${itemId}/summary`, { method: "POST" }),
+
+  // Source validation (Phase 5)
+  validateItem: (itemId: string) =>
+    req<Validation>(`/items/${itemId}/validate`, { method: "POST" }),
+  validateLibrary: (libId: string) =>
+    req<{
+      checked: number;
+      verified: number;
+      metadata_mismatch: number;
+      not_found: number;
+      unverifiable: number;
+    }>(`/libraries/${libId}/validate`, { method: "POST" }),
 };

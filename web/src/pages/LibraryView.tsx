@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
+import ValidationBadge from "../components/ValidationBadge";
 import type {
   AuditEvent,
   Collection,
@@ -42,6 +43,7 @@ export default function LibraryView() {
   const [ingestMsg, setIngestMsg] = useState("");
   const [collections, setCollections] = useState<Collection[]>([]);
   const [newColl, setNewColl] = useState("");
+  const [validateMsg, setValidateMsg] = useState("");
 
   // manual add form
   const [key, setKey] = useState("");
@@ -73,6 +75,20 @@ export default function LibraryView() {
         setTotal(r.total);
       })
       .catch((e) => setErr(String(e)));
+  };
+
+  const doValidate = async () => {
+    setValidateMsg("Validating sources…");
+    try {
+      const s = await api.validateLibrary(libId);
+      setValidateMsg(
+        `Checked ${s.checked}: ${s.verified} verified, ${s.metadata_mismatch} mismatch, ${s.not_found} not found, ${s.unverifiable} unverifiable.`,
+      );
+      loadItems(q); // refresh badges
+    } catch (e) {
+      setValidateMsg("");
+      setErr(String(e));
+    }
   };
 
   const doReindex = async () => {
@@ -237,8 +253,19 @@ export default function LibraryView() {
               Reindex search
             </button>
           )}
+          {canEdit && (
+            <button
+              className="secondary"
+              type="button"
+              onClick={doValidate}
+              title="Verify each reference against Crossref/arXiv to flag AI-hallucinated sources"
+            >
+              Validate sources
+            </button>
+          )}
         </div>
         {reindexMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{reindexMsg}</p>}
+        {validateMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{validateMsg}</p>}
         {imp && (
           <p className={imp.key_collisions.length ? "warn" : "muted"} style={{ marginTop: "0.5rem" }}>
             Imported {imp.imported} entr{imp.imported === 1 ? "y" : "ies"} from {imp.filename}.
@@ -331,6 +358,7 @@ export default function LibraryView() {
                 <Link to={`/items/${it.id}`}>
                   <strong>{it.title || "(untitled)"}</strong>
                 </Link>
+                <ValidationBadge v={it.validation} />
                 <div className="muted">
                   {it.citation_key} · {it.type}
                   {it.year ? ` · ${it.year}` : ""}

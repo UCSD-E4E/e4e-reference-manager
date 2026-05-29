@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
+import ValidationBadge from "../components/ValidationBadge";
 import type { AuditEvent, Collection, Item, Note, Tag } from "../types";
 
 function authorsText(csl: Record<string, unknown>): string {
@@ -27,6 +28,7 @@ export default function ItemView() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [addColl, setAddColl] = useState("");
   const [collMsg, setCollMsg] = useState("");
+  const [validating, setValidating] = useState(false);
 
   const reload = async () => {
     try {
@@ -40,6 +42,18 @@ export default function ItemView() {
       setCanEdit(lib.my_access === "edit" || lib.my_access === "manage");
     } catch (e) {
       setErr(String(e));
+    }
+  };
+
+  const verify = async () => {
+    setValidating(true);
+    try {
+      await api.validateItem(itemId);
+      await reload();
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setValidating(false);
     }
   };
 
@@ -170,6 +184,42 @@ export default function ItemView() {
           <p className="muted">
             DOI: <a href={`https://doi.org/${item.doi}`}>{item.doi}</a>
           </p>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>
+          Source validation <ValidationBadge v={item.validation} full />
+        </h2>
+        {item.validation ? (
+          <div className="muted">
+            {item.validation.matched_title && item.validation.matched_title !== item.title && (
+              <p>
+                Registrar match: <em>“{item.validation.matched_title}”</em>
+                {item.validation.title_similarity != null && (
+                  <> (similarity {Math.round(item.validation.title_similarity * 100)}%)</>
+                )}
+              </p>
+            )}
+            <p>{item.validation.notes}</p>
+            <p>Checked {new Date(item.validation.checked_at).toLocaleString()}</p>
+          </div>
+        ) : (
+          <p className="muted">
+            Not yet checked. Click <strong>Verify source</strong> to look this reference up
+            at Crossref/arXiv and flag fabricated DOIs or hallucinated papers.
+          </p>
+        )}
+        {canEdit && (
+          <button
+            className="secondary"
+            type="button"
+            onClick={verify}
+            disabled={validating}
+            style={{ marginTop: "0.5rem" }}
+          >
+            {validating ? "Checking…" : "Verify source"}
+          </button>
         )}
       </div>
 
