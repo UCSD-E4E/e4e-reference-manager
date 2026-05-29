@@ -101,6 +101,31 @@ class CollectionOut(BaseModel):
     created_at: datetime
 
 
+# --- Auto-groups (Phase 7) ---
+
+
+class AutoGroupCreate(BaseModel):
+    name: str
+    kind: str  # field | tag | search
+    params: dict = Field(default_factory=dict)
+
+
+class AutoGroupOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    library_id: uuid.UUID
+    name: str
+    kind: str
+    params: dict
+    count: int  # live member count
+    created_at: datetime
+
+
+class AutoGroupGenerate(BaseModel):
+    # year | type | journal | author | ml_tags | manual_tags | all_tags
+    source: str
+
+
 # --- Tags / ML (Phase 3d) ---
 
 

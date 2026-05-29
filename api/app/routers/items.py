@@ -38,6 +38,8 @@ def _denormalize(item: Item, csl: dict) -> None:
     item.title = (csl.get("title") or "").strip()
     item.year = year_from_csl(csl)
     item.doi = csl.get("DOI")
+    if csl.get("type"):
+        item.type = csl["type"]  # csl is the source of truth for CSL type
     item.search_text = _search_text(item, csl)
 
 

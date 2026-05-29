@@ -15,6 +15,7 @@ from .routers import (
     annotations,
     attachments,
     auth,
+    auto_groups,
     bib,
     collab,
     collections,
@@ -64,6 +65,7 @@ app.include_router(items.router)
 app.include_router(search.router)
 app.include_router(bib.router)
 app.include_router(collections.router)
+app.include_router(auto_groups.router)
 app.include_router(attachments.router)
 app.include_router(annotations.router)
 app.include_router(collab.router)

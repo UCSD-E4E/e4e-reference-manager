@@ -291,6 +291,29 @@ class Note(Base):
     )
 
 
+class AutoGroup(Base):
+    """A live, rule-driven group within a Library (Phase 7).
+
+    JabRef-style auto-groups: membership is recomputed on demand from a rule rather than
+    being maintained as a static set of items. `kind` selects the rule type and `params`
+    is the kind-specific JSONB config:
+      - kind="field"  -> {"field": "year|type|journal|author", "value": "<string>"}
+      - kind="tag"    -> {"name": "<tag-name>", "source": "manual|ml" | null}
+      - kind="search" -> {"q": "<query>", "mode": "keyword"}
+    """
+
+    __tablename__ = "auto_group"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    library_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("library.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(32))  # field | tag | search
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Annotation(Base):
     """A highlight/comment anchored to a location in a PDF Attachment (Phase 4).
 
