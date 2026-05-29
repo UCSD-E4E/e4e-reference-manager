@@ -199,6 +199,10 @@ class Item(Base):
     # items created while Ollama is down stay null until the reindex endpoint backfills.
     embedding = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
 
+    # Anti-hallucination validation verdict (Phase 5). Stores the latest result from
+    # validate_item_csl() so the UI can show a badge without re-running the lookup.
+    validation: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     version: Mapped[int] = mapped_column(Integer, default=1)  # optimistic locking
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

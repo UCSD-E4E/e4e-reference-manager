@@ -66,6 +66,7 @@ class ItemOut(BaseModel):
     year: int | None
     doi: str | None
     version: int
+    validation: dict | None = None  # Phase 5 anti-hallucination verdict
     created_at: datetime
     updated_at: datetime
     attachments: list[AttachmentOut] = Field(default_factory=list)

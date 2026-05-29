@@ -25,6 +25,7 @@ from .routers import (
     ml,
     notes,
     search,
+    validate,
 )
 from .storage import ensure_bucket
 
@@ -69,3 +70,4 @@ app.include_router(collab.router)
 app.include_router(notes.router)
 app.include_router(ingest.router)
 app.include_router(ml.router)
+app.include_router(validate.router)
