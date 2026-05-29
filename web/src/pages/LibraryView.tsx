@@ -4,6 +4,8 @@ import { api } from "../api";
 import ValidationBadge from "../components/ValidationBadge";
 import type {
   AuditEvent,
+  AutoGroup,
+  AutoGroupGenerateSource,
   Collection,
   Group,
   ImportResult,
@@ -12,6 +14,16 @@ import type {
   SearchMode,
   Share,
 } from "../types";
+
+const GEN_SOURCES: { value: AutoGroupGenerateSource; label: string }[] = [
+  { value: "year", label: "By year" },
+  { value: "type", label: "By CSL type" },
+  { value: "author", label: "By author" },
+  { value: "journal", label: "By journal" },
+  { value: "ml_tags", label: "From ML-suggested tags" },
+  { value: "manual_tags", label: "From manual tags" },
+  { value: "all_tags", label: "From all tags" },
+];
 
 const CSL_TYPES = [
   "article-journal",
@@ -43,6 +55,10 @@ export default function LibraryView() {
   const [ingestMsg, setIngestMsg] = useState("");
   const [collections, setCollections] = useState<Collection[]>([]);
   const [newColl, setNewColl] = useState("");
+  const [autoGroups, setAutoGroups] = useState<AutoGroup[]>([]);
+  const [genSource, setGenSource] = useState<AutoGroupGenerateSource>("year");
+  const [genMsg, setGenMsg] = useState("");
+  const [searchAgName, setSearchAgName] = useState("");
   const [validateMsg, setValidateMsg] = useState("");
 
   // manual add form
@@ -119,12 +135,44 @@ export default function LibraryView() {
   const loadCollections = () =>
     api.listCollections(libId).then(setCollections).catch((e) => setErr(String(e)));
 
+  const loadAutoGroups = () =>
+    api.listAutoGroups(libId).then(setAutoGroups).catch((e) => setErr(String(e)));
+
   useEffect(() => {
     loadMeta();
     loadItems();
     loadCollections();
+    loadAutoGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [libId]);
+
+  const doGenerateAutoGroups = async () => {
+    setGenMsg("Generating…");
+    try {
+      const r = await api.generateAutoGroups(libId, genSource);
+      setGenMsg(`Created ${r.created} new auto-group${r.created === 1 ? "" : "s"}.`);
+      loadAutoGroups();
+    } catch (e) {
+      setGenMsg("");
+      setErr(String(e));
+    }
+  };
+
+  const createSearchAutoGroup = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!searchAgName.trim() || !q.trim()) return;
+    try {
+      await api.createAutoGroup(libId, {
+        name: searchAgName.trim(),
+        kind: "search",
+        params: { q: q.trim(), mode: "keyword" },
+      });
+      setSearchAgName("");
+      loadAutoGroups();
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
 
   const addCollection = async (e: FormEvent) => {
     e.preventDefault();
@@ -405,6 +453,78 @@ export default function LibraryView() {
             />
             <button type="submit">Create</button>
           </form>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Auto-groups</h2>
+        <p className="muted">
+          Live, rule-driven groups (JabRef-style). Membership is recomputed on demand —
+          new items matching the rule appear automatically.
+        </p>
+        {autoGroups.length === 0 && <p className="muted">None yet.</p>}
+        {autoGroups.map((g) => (
+          <div className="item-row" key={g.id}>
+            <span className="grow">
+              <strong>{g.name}</strong>{" "}
+              <span className="tag">{g.kind}</span>{" "}
+              <span className="muted">{g.count} item{g.count === 1 ? "" : "s"}</span>
+            </span>
+            <div className="row">
+              <a href={api.exportAutoGroupUrl(g.id)}>
+                <button className="secondary" type="button">Export .bib</button>
+              </a>
+              {canEdit && (
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => api.deleteAutoGroup(g.id).then(loadAutoGroups)}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {canEdit && (
+          <>
+            <div className="row" style={{ marginTop: "0.5rem" }}>
+              <select
+                value={genSource}
+                onChange={(e) => setGenSource(e.target.value as AutoGroupGenerateSource)}
+              >
+                {GEN_SOURCES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={doGenerateAutoGroups}>
+                Generate
+              </button>
+              {genMsg && <span className="muted">{genMsg}</span>}
+            </div>
+            <form
+              className="row"
+              style={{ marginTop: "0.5rem" }}
+              onSubmit={createSearchAutoGroup}
+            >
+              <input
+                className="grow"
+                placeholder={
+                  q.trim()
+                    ? `Save current search “${q.trim()}” as an auto-group, named…`
+                    : "Type a search above first, then name the auto-group here…"
+                }
+                value={searchAgName}
+                onChange={(e) => setSearchAgName(e.target.value)}
+                disabled={!q.trim()}
+              />
+              <button type="submit" disabled={!q.trim() || !searchAgName.trim()}>
+                Save search
+              </button>
+            </form>
+          </>
         )}
       </div>
 

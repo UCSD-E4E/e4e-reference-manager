@@ -164,6 +164,26 @@ a per-citation verdict table (and a `{verified, mismatch, not_found, unverifiabl
 summary). Endpoints: `POST /items/{id}/validate-references` (uses the attached PDF),
 `POST /pdf-validate` (multipart upload — vet an AI-drafted paper before importing).
 
+## What works in Phase 7 (JabRef-style auto-groups)
+
+Live, rule-driven groups within a library — membership is **recomputed on demand**, so
+new items matching the rule appear automatically. Three rule kinds:
+
+- **By field value** — one group per unique value of `year` / CSL `type` / `journal` /
+  any-author family. Generate them in one click ("Generate by year" creates a group per
+  year present in the library; calls are idempotent).
+- **By tag** — items carrying a specific Tag, optionally filtered by source
+  (`manual` / `ml`). The **"From ML-suggested tags"** generator turns every Phase-3d
+  ml-tag into its own auto-group, so you can browse what the LLM thinks belongs
+  together.
+- **By saved search** — name the current search box query; an auto-group whose members
+  are whatever currently matches that FTS query.
+
+Each auto-group exports its current membership to `.bib`. Endpoints:
+`GET/POST /libraries/{id}/auto-groups`, `POST /libraries/{id}/auto-groups/generate`,
+`GET /auto-groups/{id}/items`, `GET /auto-groups/{id}/export.bib`,
+`DELETE /auto-groups/{id}`.
+
 > Validation hits external services (api.crossref.org, export.arxiv.org). Crossref's
 > polite pool is used (no API key required); the User-Agent identifies the app per
 > Crossref guidance.

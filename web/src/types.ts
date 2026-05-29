@@ -135,6 +135,26 @@ export interface Collection {
   created_at: string;
 }
 
+export type AutoGroupKind = "field" | "tag" | "search";
+export type AutoGroupGenerateSource =
+  | "year"
+  | "type"
+  | "author"
+  | "journal"
+  | "ml_tags"
+  | "manual_tags"
+  | "all_tags";
+
+export interface AutoGroup {
+  id: string;
+  library_id: string;
+  name: string;
+  kind: AutoGroupKind;
+  params: Record<string, unknown>;
+  count: number;
+  created_at: string;
+}
+
 export interface Tag {
   id: string;
   name: string;

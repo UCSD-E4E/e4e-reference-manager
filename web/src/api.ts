@@ -2,6 +2,9 @@ import type {
   Annotation,
   AnnotationRect,
   AuditEvent,
+  AutoGroup,
+  AutoGroupGenerateSource,
+  AutoGroupKind,
   Collection,
   Group,
   ImportResult,
@@ -87,6 +90,24 @@ export const api = {
   removeItemFromCollection: (collId: string, itemId: string) =>
     req<void>(`/collections/${collId}/items/${itemId}`, { method: "DELETE" }),
   exportCollectionUrl: (id: string) => `${API_URL}/collections/${id}/export.bib`,
+
+  // Auto-groups (Phase 7)
+  listAutoGroups: (libId: string) => req<AutoGroup[]>(`/libraries/${libId}/auto-groups`),
+  createAutoGroup: (
+    libId: string,
+    body: { name: string; kind: AutoGroupKind; params: Record<string, unknown> },
+  ) =>
+    req<AutoGroup>(`/libraries/${libId}/auto-groups`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteAutoGroup: (id: string) => req<void>(`/auto-groups/${id}`, { method: "DELETE" }),
+  generateAutoGroups: (libId: string, source: AutoGroupGenerateSource) =>
+    req<{ created: number }>(`/libraries/${libId}/auto-groups/generate`, {
+      method: "POST",
+      body: JSON.stringify({ source }),
+    }),
+  exportAutoGroupUrl: (id: string) => `${API_URL}/auto-groups/${id}/export.bib`,
 
   uploadAttachment: (itemId: string, file: File) => {
     const fd = new FormData();
