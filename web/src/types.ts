@@ -79,6 +79,23 @@ export interface Validation {
   checked_at: string;
 }
 
+export interface RefValidation {
+  cited_text: string;
+  csl: Record<string, unknown>;
+  verdict: Validation;
+}
+
+export interface PdfValidationResult {
+  summary: {
+    total: number;
+    verified: number;
+    metadata_mismatch: number;
+    not_found: number;
+    unverifiable: number;
+  };
+  references: RefValidation[];
+}
+
 export interface Item {
   id: string;
   library_id: string;

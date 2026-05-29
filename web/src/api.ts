@@ -10,6 +10,7 @@ import type {
   ItemList,
   Library,
   Note,
+  PdfValidationResult,
   SearchMode,
   Share,
   SuggestedTags,
@@ -176,6 +177,8 @@ export const api = {
   // Source validation (Phase 5)
   validateItem: (itemId: string) =>
     req<Validation>(`/items/${itemId}/validate`, { method: "POST" }),
+  validateItemReferences: (itemId: string) =>
+    req<PdfValidationResult>(`/items/${itemId}/validate-references`, { method: "POST" }),
   validateLibrary: (libId: string) =>
     req<{
       checked: number;

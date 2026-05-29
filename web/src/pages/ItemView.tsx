@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
 import ValidationBadge from "../components/ValidationBadge";
-import type { AuditEvent, Collection, Item, Note, Tag } from "../types";
+import type { AuditEvent, Collection, Item, Note, PdfValidationResult, Tag } from "../types";
 
 function authorsText(csl: Record<string, unknown>): string {
   const authors = csl.author as Array<{ family?: string; given?: string }> | undefined;
@@ -29,6 +29,8 @@ export default function ItemView() {
   const [addColl, setAddColl] = useState("");
   const [collMsg, setCollMsg] = useState("");
   const [validating, setValidating] = useState(false);
+  const [pdfValidation, setPdfValidation] = useState<PdfValidationResult | null>(null);
+  const [pdfValidating, setPdfValidating] = useState(false);
 
   const reload = async () => {
     try {
@@ -42,6 +44,18 @@ export default function ItemView() {
       setCanEdit(lib.my_access === "edit" || lib.my_access === "manage");
     } catch (e) {
       setErr(String(e));
+    }
+  };
+
+  const verifyPdfCitations = async () => {
+    setPdfValidating(true);
+    try {
+      const r = await api.validateItemReferences(itemId);
+      setPdfValidation(r);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setPdfValidating(false);
     }
   };
 
@@ -222,6 +236,61 @@ export default function ItemView() {
           </button>
         )}
       </div>
+
+      {canEdit && item.attachments.some((a) => a.content_type === "application/pdf") && (
+        <div className="card">
+          <h2>Citations in this PDF</h2>
+          <p className="muted">
+            Extract this paper's bibliography with GROBID and check each citation against
+            Crossref/arXiv — catches fabricated references in AI-drafted text.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={verifyPdfCitations}
+            disabled={pdfValidating}
+          >
+            {pdfValidating ? "Scanning citations…" : "Verify citations in this PDF"}
+          </button>
+          {pdfValidation && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <p>
+                <strong>{pdfValidation.summary.total} citations</strong> —
+                <span style={{ color: "#16a34a" }}> {pdfValidation.summary.verified} verified</span>,
+                <span style={{ color: "#d97706" }}> {pdfValidation.summary.metadata_mismatch} mismatch</span>,
+                <span style={{ color: "#dc2626" }}> {pdfValidation.summary.not_found} not found</span>,
+                <span style={{ color: "#6b7280" }}> {pdfValidation.summary.unverifiable} unverifiable</span>
+                .
+              </p>
+              {pdfValidation.references.map((r, i) => {
+                const refTitle = String(r.csl.title ?? "");
+                return (
+                  <div className="item-row" key={i}>
+                    <span className="grow">
+                      <ValidationBadge v={r.verdict} />{" "}
+                      <strong>{refTitle || "(no title)"}</strong>
+                      {r.verdict.matched_title && r.verdict.matched_title !== refTitle && (
+                        <span className="muted">
+                          {" "}→ matched “{r.verdict.matched_title}”
+                        </span>
+                      )}
+                      {r.cited_text && r.cited_text !== refTitle && (
+                        <div className="muted" style={{ fontSize: "0.85em" }}>
+                          {r.cited_text.slice(0, 180)}
+                          {r.cited_text.length > 180 ? "…" : ""}
+                        </div>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              {pdfValidation.references.length === 0 && (
+                <p className="muted">GROBID didn't find a bibliography in this PDF.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card">
         <h2>Tags &amp; summary</h2>

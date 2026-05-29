@@ -157,6 +157,13 @@ cached on the item, shown as a badge in the project view, and detailed on the it
 page. Endpoints: `POST /items/{id}/validate` (one item), `POST /libraries/{id}/validate`
 (batch — returns a count summary).
 
+**Scan a PDF's bibliography for fabricated citations.** GROBID's `/api/processReferences`
+extracts every cited work in the PDF; each is then run through the same Crossref/arXiv
+check. On an item with a PDF attachment, click **"Verify citations in this PDF"** to get
+a per-citation verdict table (and a `{verified, mismatch, not_found, unverifiable}`
+summary). Endpoints: `POST /items/{id}/validate-references` (uses the attached PDF),
+`POST /pdf-validate` (multipart upload — vet an AI-drafted paper before importing).
+
 > Validation hits external services (api.crossref.org, export.arxiv.org). Crossref's
 > polite pool is used (no API key required); the User-Agent identifies the app per
 > Crossref guidance.
