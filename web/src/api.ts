@@ -15,6 +15,7 @@ import type {
   ItemList,
   Library,
   Note,
+  PastePreviewEntry,
   PdfValidationResult,
   SearchMode,
   Share,
@@ -104,6 +105,16 @@ export const api = {
     req<Item>(`/items/${id}`, { method: "PATCH", body: JSON.stringify({ version, csl_json }) }),
   deleteItem: (id: string) => req<void>(`/items/${id}`, { method: "DELETE" }),
 
+  previewPaste: (libId: string, bibtex: string) =>
+    req<{ entries: PastePreviewEntry[] }>(`/libraries/${libId}/import/preview`, {
+      method: "POST",
+      body: JSON.stringify({ bibtex }),
+    }),
+  importPaste: (libId: string, bibtex: string, indices: number[]) =>
+    req<ImportResult>(`/libraries/${libId}/import/text`, {
+      method: "POST",
+      body: JSON.stringify({ bibtex, indices }),
+    }),
   dedupeLibrary: (libId: string, dryRun: boolean) =>
     req<DedupeResult>(`/libraries/${libId}/dedupe?dry_run=${dryRun}`, { method: "POST" }),
   importBib: (libId: string, file: File) => {

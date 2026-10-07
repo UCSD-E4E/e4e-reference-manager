@@ -12,8 +12,10 @@ All HTTP is best-effort and monkeypatched in tests; failures yield a `not_found`
 `unverifiable` verdict rather than 500ing the request."""
 from __future__ import annotations
 
+import json
 import logging
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -235,3 +237,29 @@ async def validate_item_csl(csl: dict) -> dict:
         )
 
     return _verdict("unverifiable", "none", notes="No DOI, arXiv id, or title to check")
+
+
+# ---------- short-lived verdict cache ----------
+# A paste preview validates entries, then "add" stores verdicts for the chosen ones; the
+# cache lets the add reuse the preview's lookups instead of hitting Crossref twice. In
+# process memory: one API worker, and a miss just means looking it up again.
+
+_CACHE_TTL_S = 3600
+_CACHE_MAX = 2000
+_cache: dict[str, tuple[float, dict]] = {}
+
+
+def clear_validation_cache() -> None:
+    _cache.clear()
+
+
+async def cached_validate_csl(csl: dict) -> dict:
+    key = json.dumps(csl, sort_keys=True, default=str)
+    hit = _cache.get(key)
+    if hit and time.monotonic() - hit[0] < _CACHE_TTL_S:
+        return hit[1]
+    verdict = await validate_item_csl(csl)
+    if len(_cache) >= _CACHE_MAX:
+        _cache.pop(next(iter(_cache)))  # oldest insertion
+    _cache[key] = (time.monotonic(), verdict)
+    return verdict

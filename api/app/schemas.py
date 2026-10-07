@@ -85,6 +85,34 @@ class ImportDuplicate(BaseModel):
     matched_on: str  # doi | title
 
 
+class PasteIn(BaseModel):
+    bibtex: str = Field(max_length=2_000_000)
+    indices: list[int] | None = None  # entry positions from the preview; None = all
+    filename: str = "pasted.bib"
+
+
+class PasteDuplicate(BaseModel):
+    item_id: uuid.UUID | None = None  # an item already in the project…
+    entry_index: int | None = None  # …or an earlier entry of the same paste
+    matched_on: str  # doi | title
+
+
+class PastePreviewEntry(BaseModel):
+    index: int
+    citation_key: str
+    csl_type: str
+    title: str
+    year: int | None
+    doi: str | None
+    duplicate: PasteDuplicate | None
+    key_collision: bool  # a different paper in the project already uses this key
+    validation: dict | None = None  # verdict; None for duplicates (not checked)
+
+
+class PastePreview(BaseModel):
+    entries: list[PastePreviewEntry]
+
+
 class DedupeGroup(BaseModel):
     kept: uuid.UUID
     merged: list[uuid.UUID]

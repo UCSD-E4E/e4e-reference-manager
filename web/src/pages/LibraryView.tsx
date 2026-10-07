@@ -1,6 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import PasteBibtex from "../components/PasteBibtex";
 import ValidationBadge from "../components/ValidationBadge";
 import type {
   AuditEvent,
@@ -46,6 +47,9 @@ export default function LibraryView() {
   const [mode, setMode] = useState<SearchMode>("keyword");
   const [reindexMsg, setReindexMsg] = useState("");
   const [dedupeMsg, setDedupeMsg] = useState("");
+  const [pasting, setPasting] = useState(false);
+  const bibInput = useRef<HTMLInputElement>(null);
+  const pdfInput = useRef<HTMLInputElement>(null);
   const [err, setErr] = useState("");
   const [imp, setImp] = useState<ImportResult | null>(null);
   const [activity, setActivity] = useState<AuditEvent[]>([]);
@@ -251,7 +255,9 @@ export default function LibraryView() {
   };
 
   const onImport = async (e: FormEvent<HTMLInputElement>) => {
-    const file = e.currentTarget.files?.[0];
+    // Grab the element now: React clears e.currentTarget once the handler awaits.
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
     setErr("");
     try {
@@ -261,7 +267,7 @@ export default function LibraryView() {
     } catch (e) {
       setErr(String(e));
     }
-    e.currentTarget.value = "";
+    input.value = ""; // so picking the same file again still fires onChange
   };
 
   const onAdd = async (e: FormEvent) => {
@@ -307,7 +313,9 @@ export default function LibraryView() {
   };
 
   const onFromPdf = async (e: FormEvent<HTMLInputElement>) => {
-    const file = e.currentTarget.files?.[0];
+    // Grab the element now: React clears e.currentTarget once the handler awaits.
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
     setIngestMsg("Extracting metadata from PDF…");
     try {
@@ -319,7 +327,7 @@ export default function LibraryView() {
       setIngestMsg("");
       setErr(String(e));
     }
-    e.currentTarget.value = "";
+    input.value = ""; // so picking the same file again still fires onChange
   };
 
   const addShare = async (e: FormEvent) => {
@@ -350,10 +358,15 @@ export default function LibraryView() {
         <h2>Library tools</h2>
         <div className="row">
           {canEdit && (
-            <label className="secondary" style={{ padding: "0.55rem 0.7rem", borderRadius: 8 }}>
-              Import .bib
-              <input type="file" accept=".bib" onChange={onImport} style={{ display: "none" }} />
-            </label>
+            <>
+              <button className="secondary" type="button" onClick={() => bibInput.current?.click()}>
+                Import .bib
+              </button>
+              <input ref={bibInput} type="file" accept=".bib" onChange={onImport} hidden />
+              <button className="secondary" type="button" onClick={() => setPasting(true)}>
+                Paste BibTeX
+              </button>
+            </>
           )}
           <a href={api.exportLibraryUrl(libId)}>
             <button className="secondary" type="button">
@@ -405,18 +418,28 @@ export default function LibraryView() {
                 onChange={(e) => setIngestQuery(e.target.value)}
               />
               <button type="submit">Fetch</button>
-              <label
-                className="secondary"
-                style={{ padding: "0.55rem 0.7rem", borderRadius: 8, cursor: "pointer" }}
-              >
+              <button className="secondary" type="button" onClick={() => pdfInput.current?.click()}>
                 Add from PDF
-                <input type="file" accept="application/pdf" onChange={onFromPdf} style={{ display: "none" }} />
-              </label>
+              </button>
+              <input ref={pdfInput} type="file" accept="application/pdf" onChange={onFromPdf} hidden />
             </form>
             {ingestMsg && <p className="muted">{ingestMsg}</p>}
           </>
         )}
       </div>
+
+      {pasting && (
+        <PasteBibtex
+          libId={libId}
+          onClose={() => setPasting(false)}
+          onAdded={(r) => {
+            setPasting(false);
+            setImp(r);
+            loadItems(q);
+            loadMeta();
+          }}
+        />
+      )}
 
       {canEdit && (
         <form className="card" onSubmit={onAdd}>
