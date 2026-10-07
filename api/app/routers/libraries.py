@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..audit import record
 from ..auth import get_current_user
 from ..db import get_session
-from ..deps import library_access_level, library_viewer, user_group_ids
-from ..models import AuditEvent, Library, LibraryShare, User
+from ..deps import library_access_level, library_manager, library_viewer, user_group_ids
+from ..models import AuditEvent, Item, Library, LibraryShare, User
 from ..schemas import AuditEventOut, LibraryCreate, LibraryOut
 
 router = APIRouter(prefix="/libraries", tags=["libraries"])
@@ -72,6 +73,34 @@ async def get_library(
 ):
     lib.my_access = await library_access_level(session, user, lib)
     return lib
+
+
+@router.delete("/{library_id}", status_code=204)
+async def delete_library(
+    lib: Library = Depends(library_manager),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a project and everything in it (items, collections, notes, annotations,
+    shares, its own activity log) via the schema's ON DELETE CASCADE. PDFs stay in
+    object storage, as for item deletes, so a database restore brings a project back
+    whole."""
+    item_count = await session.scalar(
+        select(func.count()).select_from(Item).where(Item.library_id == lib.id)
+    )
+    # library_id=None: the library's own events cascade away with it; this one stays.
+    record(
+        session,
+        actor=user,
+        library_id=None,
+        entity_type="library",
+        entity_id=lib.id,
+        operation="delete",
+        summary=f"Deleted project “{lib.name}” ({item_count} items)",
+        before={"name": lib.name, "description": lib.description, "items": item_count},
+    )
+    await session.execute(delete(Library).where(Library.id == lib.id))
+    await session.commit()
 
 
 @router.get("/{library_id}/activity", response_model=list[AuditEventOut])
