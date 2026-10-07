@@ -9,6 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
+from . import __version__
 from .auth import register_oidc
 from .config import Settings, get_settings
 from .routers import (
@@ -52,7 +53,7 @@ def session_cookie_https_only(s: Settings) -> bool:
     return s.app_base_url.startswith("https://")
 
 
-app = FastAPI(title="e4e Reference Manager API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="e4e Reference Manager API", version=__version__, lifespan=lifespan)
 
 app.add_middleware(
     SessionMiddleware,

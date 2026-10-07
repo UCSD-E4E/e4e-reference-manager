@@ -28,3 +28,16 @@ def test_session_cookie_secure_when_served_over_https():
 def test_session_middleware_uses_https_only_setting():
     mw = next(m for m in app.user_middleware if m.cls is SessionMiddleware)
     assert mw.kwargs["https_only"] == session_cookie_https_only(get_settings())
+
+
+def test_api_version_tracks_the_released_version():
+    # release-please bumps pyproject.toml and app/__init__.py together; /docs and the
+    # OpenAPI schema must report the version that is actually deployed.
+    import tomllib
+    from pathlib import Path
+
+    from app import __version__
+
+    pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert __version__ == pyproject["project"]["version"]
+    assert app.version == __version__

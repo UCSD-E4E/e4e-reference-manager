@@ -1,22 +1,30 @@
 name: Release
 
-# Tag vX.Y.Z → build + push both images at that version → open an
-# `auto-deploy/vX.Y.Z` PR bumping deploy/incus/compose.yml's pins. A human merges it,
-# and deploy.yml converges the slot. Mirrors fishsense-services' release → promote
-# chain, trimmed: two images, no release-please.
+# release-please (same setup as fishsense-lite): every push to main updates a release
+# PR from the Conventional Commits since the last release. Merging that PR cuts the
+# GitHub release + `vX.Y.Z` tag, and this same run then builds + pushes both images
+# at that version and opens an `auto-deploy/vX.Y.Z` PR bumping deploy/incus/compose.yml's
+# pins. A human merges it, and deploy.yml converges the slot.
 #
-# Why the PR merge is the trigger (not the tag): the slot converges to whatever is on
-# main, so the pins on main must name images that already exist. This workflow
-# guarantees the images are pushed before the PR that names them is opened.
+# One version for the whole app (api + web deploy together off one pin set), so the
+# config has a single root package and tags carry no component prefix.
 #
-# Needs (repo settings): Actions → General → "Allow GitHub Actions to create and
-# approve pull requests". And the two GHCR packages must be PUBLIC (the slot pulls
-# anonymously): after the first release, Packages → e4e-reference-manager-{api,web}
-# → Package settings → Change visibility → Public.
+# Images are built in this run, gated on `release_created`, rather than in a separate
+# `on: push: tags` / `on: release` workflow: the release-please output is the trigger,
+# so nothing depends on a tag-created event firing a second workflow.
+#
+# Why the PR merge is the deploy trigger (not the release): the slot converges to
+# whatever is on main, so the pins on main must name images that already exist. This
+# workflow guarantees the images are pushed before the PR that names them is opened.
+#
+# Needs: the org GitHub App (vars.APP_ID + secrets.APP_PRIVATE_KEY, as fishsense-lite)
+# so release-please's PRs/tags trigger CI and deploy.yml (GITHUB_TOKEN events don't);
+# and the two GHCR packages PUBLIC (the slot pulls anonymously): after the first
+# release, Packages → e4e-reference-manager-{api,web} → Package settings → Public.
 
 on:
   push:
-    tags: ["v*.*.*"]
+    branches: [main]
 
 permissions: {}
 
@@ -24,7 +32,68 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ steps.app-token.outputs.token }}
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      pr: ${{ steps.release.outputs.pr }}
+
+  # release-please bumps api/pyproject.toml but knows nothing about uv.lock, which
+  # records the project's own version too (its jsonpath filters can't select a uv.lock
+  # [[package]] entry). Re-lock on the release PR branch so a release never leaves the
+  # lock behind. Re-runs each time release-please rewrites the branch.
+  relock-release-pr:
+    needs: release-please
+    if: needs.release-please.outputs.pr
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Re-lock and push if the project version moved
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          (cd api && uv lock)
+          if git diff --quiet -- api/uv.lock; then
+            echo "::notice::api/uv.lock already in step."
+            exit 0
+          fi
+          app="${{ steps.app-token.outputs.app-slug }}[bot]"
+          uid="$(gh api "/users/${app}" --jq .id)"
+          git config user.name "$app"
+          git config user.email "${uid}+${app}@users.noreply.github.com"
+          git commit -am "chore: refresh api/uv.lock for release"
+          git push
+
   images:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,6 +108,8 @@ jobs:
             context: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -58,23 +129,28 @@ jobs:
           # (Ignored by the api image, which declares no such ARG.)
           build-args: |
             VITE_API_URL=/api
-          tags: ${{ steps.img.outputs.name }}:${{ github.ref_name }}
+          tags: ${{ steps.img.outputs.name }}:${{ needs.release-please.outputs.tag_name }}
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
   pin-bump-pr:
-    needs: images
+    needs: [release-please, images]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
+      # App token, not GITHUB_TOKEN: a PR opened with GITHUB_TOKEN runs no CI, and its
+      # merge must fire deploy.yml.
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ steps.app-token.outputs.token }}
       - name: Bump the pins and open the auto-deploy PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
         run: |
           set -euo pipefail
           branch="auto-deploy/${TAG}"
@@ -83,8 +159,10 @@ jobs:
             echo "::notice::pins already at ${TAG}; nothing to deploy."
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          app="${{ steps.app-token.outputs.app-slug }}[bot]"
+          uid="$(gh api "/users/${app}" --jq .id)"
+          git config user.name "$app"
+          git config user.email "${uid}+${app}@users.noreply.github.com"
           git switch -c "$branch"
           git commit -am "deploy: ${TAG}"
           git push origin "$branch"

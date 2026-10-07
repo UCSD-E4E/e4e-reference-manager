@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "package-name": "e4e-reference-manager",
+      "bootstrap-sha": "30e8ddc02e4b92055c5c193623f844f55ea5b187",
+      "extra-files": [
+        { "type": "toml", "path": "api/pyproject.toml", "jsonpath": "$.project.version" },
+        { "type": "generic", "path": "api/app/__init__.py" },
+        { "type": "json", "path": "web/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "web/package-lock.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "web/package-lock.json", "jsonpath": "$.packages[''].version" }
+      ]
+    }
+  }
+}
