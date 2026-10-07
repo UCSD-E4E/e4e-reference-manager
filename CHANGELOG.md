@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.0.1...v1.0.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* login 500 when the groups claim repeats a group ([db5e0b3](https://github.com/UCSD-E4E/e4e-reference-manager/commit/db5e0b3afcecd05163ba110e9305a81203b8ff58))
+* login 500 when the groups claim repeats a group ([8413619](https://github.com/UCSD-E4E/e4e-reference-manager/commit/8413619317f3a471527114dd3d09d79a63562cfb))
+
 ## [1.0.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.0.0...v1.0.1) (2026-10-07)
 
 
