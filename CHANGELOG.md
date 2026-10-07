@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.0.2...v1.1.0) (2026-10-07)
+
+
+### Features
+
+* delete projects ([e1a4742](https://github.com/UCSD-E4E/e4e-reference-manager/commit/e1a474258b61aae66644ff33b00bb402bc7e54aa))
+* delete projects ([ea4ad0f](https://github.com/UCSD-E4E/e4e-reference-manager/commit/ea4ad0fed2607f3537072c71e23b879404a960db))
+
 ## [1.0.2](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.0.1...v1.0.2) (2026-10-07)
 
 
