@@ -195,8 +195,10 @@ async def test_generate_from_ml_tags(client, library, monkeypatch):
         return '["coral reefs", "machine learning"]'
 
     monkeypatch.setattr(llm, "chat", fake_chat)
-    a = await _item(client, library, key="m1", title="MLp")
-    await client.post(f"/items/{a['id']}/suggest-tags", params={"apply": "true"})
+    # ML-tag groups need 3 papers sharing the tag
+    for n in range(3):
+        a = await _item(client, library, key=f"m{n}", title=f"MLp {n}")
+        await client.post(f"/items/{a['id']}/suggest-tags", params={"apply": "true"})
 
     r = await client.post(
         f"/libraries/{library}/auto-groups/generate", json={"source": "ml_tags"}

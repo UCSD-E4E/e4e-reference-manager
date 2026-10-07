@@ -16,11 +16,12 @@ import type {
 } from "../types";
 
 const GEN_SOURCES: { value: AutoGroupGenerateSource; label: string }[] = [
+  { value: "topics", label: "Topics (papers clustered by similarity)" },
   { value: "year", label: "By year" },
   { value: "type", label: "By CSL type" },
   { value: "author", label: "By author" },
   { value: "journal", label: "By journal" },
-  { value: "ml_tags", label: "From ML-suggested tags" },
+  { value: "ml_tags", label: "From ML-suggested tags (shared by 3+ papers)" },
   { value: "manual_tags", label: "From manual tags" },
   { value: "all_tags", label: "From all tags" },
 ];
@@ -57,7 +58,7 @@ export default function LibraryView() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [newColl, setNewColl] = useState("");
   const [autoGroups, setAutoGroups] = useState<AutoGroup[]>([]);
-  const [genSource, setGenSource] = useState<AutoGroupGenerateSource>("year");
+  const [genSource, setGenSource] = useState<AutoGroupGenerateSource>("topics");
   const [genMsg, setGenMsg] = useState("");
   const [searchAgName, setSearchAgName] = useState("");
   const [validateMsg, setValidateMsg] = useState("");
@@ -195,6 +196,7 @@ export default function LibraryView() {
     setGenMsg("Generating…");
     try {
       if (genSource === "ml_tags") setGenMsg("Asking the model to tag untagged items…");
+      if (genSource === "topics") setGenMsg("Clustering papers and naming topics… (can take a minute)");
       const r = await api.generateAutoGroups(libId, genSource);
       let msg = `Created ${r.created} new auto-group${r.created === 1 ? "" : "s"}.`;
       if (r.tagged !== undefined && r.remaining !== undefined) {
@@ -205,6 +207,12 @@ export default function LibraryView() {
               ? `; ${r.remaining} still untagged — run again to continue.`
               : `; ${r.remaining} untagged and the model gave no tags (is Ollama running?).`;
         } else msg += ".";
+      }
+      if (r.clustered !== undefined) {
+        msg =
+          `${r.created} topic${r.created === 1 ? "" : "s"} covering ${r.clustered} papers` +
+          (r.unclustered ? ` (${r.unclustered} without an embedding left out)` : "") +
+          ". Regenerate any time to re-fit them as the project grows.";
       }
       setGenMsg(msg);
       loadAutoGroups();
