@@ -11,11 +11,24 @@ from ..schemas import UserOut
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _safe_next(next_path: str | None) -> str | None:
+    """Accept only a same-site path ("/x"), never "//host" or "/\\host" (open redirect)."""
+    if not next_path or not next_path.startswith("/") or next_path[1:2] in ("/", "\\"):
+        return None
+    return next_path
+
+
+def _after_login_url(next_path: str | None) -> str:
+    base = get_settings().post_login_redirect
+    return base.rstrip("/") + next_path if next_path else base
+
+
 @router.get("/login")
-async def login(request: Request):
+async def login(request: Request, next: str | None = None):
     s = get_settings()
     if s.dev_auth:
-        return RedirectResponse(s.post_login_redirect)
+        return RedirectResponse(_after_login_url(_safe_next(next)))
+    request.session["login_next"] = _safe_next(next)
     return await oauth.authentik.authorize_redirect(request, s.oidc_redirect_uri)
 
 
@@ -34,7 +47,7 @@ async def callback(request: Request, session: AsyncSession = Depends(get_session
     if isinstance(groups, list):
         await sync_user_groups(session, user, [str(g) for g in groups])
     request.session["user_sub"] = sub
-    return RedirectResponse(s.post_login_redirect)
+    return RedirectResponse(_after_login_url(_safe_next(request.session.pop("login_next", None))))
 
 
 @router.post("/logout")
