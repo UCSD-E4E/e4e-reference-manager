@@ -25,6 +25,24 @@ import type {
 export const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
 
+const LOGIN_REDIRECT_KEY = "refman-login-redirect-at";
+
+/** Send a logged-out visitor through the API's OIDC login, returning to this page.
+ * Returns false (show the error instead) if we already redirected moments ago, so a
+ * session cookie that fails to stick can't loop the browser through Authentik. */
+function redirectToLogin(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(LOGIN_REDIRECT_KEY) ?? 0);
+    if (Date.now() - last < 15_000) return false;
+    sessionStorage.setItem(LOGIN_REDIRECT_KEY, String(Date.now()));
+  } catch {
+    /* storage unavailable: redirect anyway */
+  }
+  const next = window.location.pathname + window.location.search;
+  window.location.assign(`${API_URL}/auth/login?next=${encodeURIComponent(next)}`);
+  return true;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: "include",
@@ -33,6 +51,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
       : init?.headers,
     ...init,
   });
+  // Never settle while the browser navigates away, so the page doesn't flash the error.
+  if (res.status === 401 && redirectToLogin()) return new Promise<T>(() => {});
   if (!res.ok) {
     let detail = res.statusText;
     try {
