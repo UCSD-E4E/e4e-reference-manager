@@ -26,11 +26,15 @@ export const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
 
 const LOGIN_REDIRECT_KEY = "refman-login-redirect-at";
+// Set once this page load has started navigating to login, so concurrent 401s (a page
+// firing several requests at once) join that redirect instead of tripping the guard.
+let redirectingToLogin = false;
 
 /** Send a logged-out visitor through the API's OIDC login, returning to this page.
- * Returns false (show the error instead) if we already redirected moments ago, so a
- * session cookie that fails to stick can't loop the browser through Authentik. */
+ * Returns false (show the error instead) if an EARLIER page load redirected moments
+ * ago, so a session cookie that fails to stick can't loop the browser through Authentik. */
 function redirectToLogin(): boolean {
+  if (redirectingToLogin) return true;
   try {
     const last = Number(sessionStorage.getItem(LOGIN_REDIRECT_KEY) ?? 0);
     if (Date.now() - last < 15_000) return false;
@@ -38,6 +42,7 @@ function redirectToLogin(): boolean {
   } catch {
     /* storage unavailable: redirect anyway */
   }
+  redirectingToLogin = true;
   const next = window.location.pathname + window.location.search;
   window.location.assign(`${API_URL}/auth/login?next=${encodeURIComponent(next)}`);
   return true;
@@ -51,14 +56,20 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
       : init?.headers,
     ...init,
   });
-  // Never settle while the browser navigates away, so the page doesn't flash the error.
-  if (res.status === 401 && redirectToLogin()) return new Promise<T>(() => {});
+  // Only reads redirect: navigating away on a failed write (POST/PATCH/…) would throw
+  // away whatever the user was saving. Writes surface the 401 so the form keeps its data.
+  // A redirecting read never settles, so the page doesn't flash the error meanwhile.
+  const isRead = ["GET", "HEAD"].includes((init?.method ?? "GET").toUpperCase());
+  if (res.status === 401 && isRead && redirectToLogin()) return new Promise<T>(() => {});
   if (!res.ok) {
     let detail = res.statusText;
     try {
       detail = (await res.json()).detail ?? detail;
     } catch {
       /* ignore */
+    }
+    if (res.status === 401 && !isRead) {
+      detail += " — your session expired. Sign in again in a new tab, then retry; your changes are still here.";
     }
     throw new Error(`${res.status}: ${detail}`);
   }
