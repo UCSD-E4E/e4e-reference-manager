@@ -142,6 +142,9 @@ export interface GenerateResult {
   // only for source "ml_tags": items the model just tagged / still without ML tags
   tagged?: number;
   remaining?: number;
+  // only for source "topics": papers placed in a topic / without an embedding
+  clustered?: number;
+  unclustered?: number;
 }
 
 export type SearchMode = "keyword" | "semantic" | "hybrid";
@@ -156,6 +159,7 @@ export interface Collection {
 
 export type AutoGroupKind = "field" | "tag" | "search";
 export type AutoGroupGenerateSource =
+  | "topics"
   | "year"
   | "type"
   | "author"

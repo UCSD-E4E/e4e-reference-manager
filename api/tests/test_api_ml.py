@@ -142,18 +142,20 @@ async def test_generate_from_ml_tags_tags_untagged_items_first(client, library, 
 
     async def fake_chat(prompt, **kw):
         calls.append(prompt)
-        return '["reefs"]' if "Reef" in prompt else '["genomics"]'
+        # "reefs" is shared by three papers; the other tag is unique to each
+        title = prompt.split("Title: ")[1].splitlines()[0].lower()
+        return f'["reefs", "{title}"]'
 
     monkeypatch.setattr(llm, "chat", fake_chat)
-    await _add(client, library, title="Reef survey")
-    await _add(client, library, title="Coral genome")
+    for title in ("Reef survey", "Reef census", "Reef bleaching"):
+        await _add(client, library, title=title)
 
     r = await client.post(f"/libraries/{library}/auto-groups/generate", json={"source": "ml_tags"})
     assert r.status_code == 200
-    body = r.json()
-    assert body == {"created": 2, "tagged": 2, "remaining": 0}
-    names = sorted(g["name"] for g in (await client.get(f"/libraries/{library}/auto-groups")).json())
-    assert names == ["genomics", "reefs"]
+    # one group: only tags shared by at least 3 papers become groups
+    assert r.json() == {"created": 1, "tagged": 3, "remaining": 0}
+    names = [g["name"] for g in (await client.get(f"/libraries/{library}/auto-groups")).json()]
+    assert names == ["reefs"]
 
     # already-tagged items aren't sent to the model again
     calls.clear()

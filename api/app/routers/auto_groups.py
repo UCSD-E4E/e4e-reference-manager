@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import Select, exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import llm
+from .. import embeddings, llm, topics
 from ..auth import get_current_user
 from ..db import get_session
 from ..deps import _rank, library_access_level, library_editor, library_viewer
@@ -274,11 +274,18 @@ async def _generate_field(
 
 
 async def _generate_tags(
-    session: AsyncSession, lib: Library, source: str | None
+    session: AsyncSession, lib: Library, source: str | None, min_items: int = 1
 ) -> list[AutoGroup]:
     q = select(Tag).where(Tag.library_id == lib.id)
     if source:
         q = q.where(Tag.source == source)
+    if min_items > 1:
+        shared = (
+            select(item_tag.c.tag_id)
+            .group_by(item_tag.c.tag_id)
+            .having(func.count() >= min_items)
+        )
+        q = q.where(Tag.id.in_(shared))
     rows = await session.execute(q)
     created: list[AutoGroup] = []
     for tag in rows.scalars().all():
@@ -297,6 +304,7 @@ async def _generate_tags(
 # (seconds each on CPU), so a big project is tagged over several clicks rather than in
 # one request long enough to time out.
 ML_TAG_BATCH = 10
+ML_GROUP_MIN_ITEMS = 3
 
 
 async def _ml_tag_untagged(session: AsyncSession, lib: Library) -> tuple[int, int]:
@@ -326,6 +334,86 @@ async def _ml_tag_untagged(session: AsyncSession, lib: Library) -> tuple[int, in
     return tagged, total - tagged
 
 
+async def _generate_topics(session: AsyncSession, lib: Library) -> dict:
+    """Cluster the project's papers by embedding and give each paper one topic tag
+    (source "topic"), with a live tag auto-group per topic. Replaces earlier topics, so
+    rerunning re-fits them to the project as it grows. All-or-nothing: if the model can't
+    name every cluster, nothing changes."""
+    items = (
+        await session.execute(
+            select(Item).where(Item.library_id == lib.id).order_by(Item.created_at, Item.id)
+        )
+    ).scalars().all()
+    for item in items:  # e.g. imported while Ollama was down
+        if item.embedding is None:
+            item.embedding = await embeddings.embed_item_csl(item.csl_json)
+    embedded = [i for i in items if i.embedding is not None]
+    if len(embedded) < topics.MIN_TOPIC_ITEMS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Topics need at least {topics.MIN_TOPIC_ITEMS} papers with embeddings; "
+            f"this project has {len(embedded)} (is Ollama running?).",
+        )
+
+    k = topics.choose_k(len(embedded))
+    labels = topics.cluster([list(i.embedding) for i in embedded], k)
+    clusters: dict[int, list[Item]] = {}
+    for item, label in zip(embedded, labels):
+        clusters.setdefault(label, []).append(item)
+
+    # Clusters the model gives the same name are one topic to a reader: merge them.
+    named: dict[str, list[Item]] = {}
+    for members in sorted(clusters.values(), key=len, reverse=True):
+        reply = await llm.chat(
+            topics.topic_prompt([m.title or m.citation_key for m in members]),
+            system=topics.TOPIC_SYSTEM,
+        )
+        name = topics.parse_topic_name(reply)
+        if name is None:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "The model didn't name the topics (is Ollama running?). Nothing was changed.",
+            )
+        named.setdefault(name, []).extend(members)
+
+    # Replace the previous topics: their groups, then their tags (item links cascade).
+    for ag in (
+        await session.execute(
+            select(AutoGroup).where(AutoGroup.library_id == lib.id, AutoGroup.kind == "tag")
+        )
+    ).scalars():
+        if (ag.params or {}).get("source") == "topic":
+            await session.delete(ag)
+    for tag in (
+        await session.execute(
+            select(Tag).where(Tag.library_id == lib.id, Tag.source == "topic")
+        )
+    ).scalars():
+        await session.delete(tag)
+    await session.flush()
+
+    for name, members in named.items():
+        tag = Tag(library_id=lib.id, name=name, source="topic")
+        session.add(tag)
+        await session.flush()
+        for m in members:
+            await session.execute(item_tag.insert().values(item_id=m.id, tag_id=tag.id))
+        session.add(
+            AutoGroup(
+                library_id=lib.id,
+                name=name,
+                kind="tag",
+                params={"name": name, "source": "topic"},
+            )
+        )
+    await session.commit()
+    return {
+        "created": len(named),
+        "clustered": len(embedded),
+        "unclustered": len(items) - len(embedded),
+    }
+
+
 @router.post("/libraries/{library_id}/auto-groups/generate")
 async def generate_auto_groups(
     payload: AutoGroupGenerate,
@@ -337,9 +425,12 @@ async def generate_auto_groups(
         created = await _generate_field(session, lib, src)
     elif src == "ml_tags":
         tagged, remaining = await _ml_tag_untagged(session, lib)
-        created = await _generate_tags(session, lib, source="ml")
+        # The model's tags are specific; a group only earns its place once 3 papers share it.
+        created = await _generate_tags(session, lib, source="ml", min_items=ML_GROUP_MIN_ITEMS)
         await session.commit()
         return {"created": len(created), "tagged": tagged, "remaining": remaining}
+    elif src == "topics":
+        return await _generate_topics(session, lib)
     elif src == "manual_tags":
         created = await _generate_tags(session, lib, source="manual")
     elif src == "all_tags":
