@@ -60,6 +60,13 @@ button {
 }
 button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--border); }
 button.danger { background: #b91c1c; }
+button:disabled { opacity: 0.5; cursor: default; }
+.paste-preview { max-height: 28rem; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.paste-row { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); cursor: pointer; }
+.paste-row:last-child { border-bottom: none; }
+.paste-row input[type="checkbox"] { width: auto; flex: 0 0 auto; }
+.paste-status { flex: 0 0 auto; white-space: nowrap; }
+.warn-inline { color: #b45309; }
 .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 .row > * { flex: 0 0 auto; }
 .grow { flex: 1 1 auto; min-width: 0; }

@@ -132,6 +132,19 @@ export interface ImportResult {
   key_collisions: string[];
 }
 
+export interface PastePreviewEntry {
+  index: number;
+  citation_key: string;
+  csl_type: string;
+  title: string;
+  year: number | null;
+  doi: string | null;
+  // an item already in the project, or an earlier entry of the same paste
+  duplicate: { item_id: string | null; entry_index: number | null; matched_on: "doi" | "title" } | null;
+  key_collision: boolean;
+  validation: Validation | null; // null for duplicates (not checked)
+}
+
 export interface DedupeResult {
   merged: number;
   groups: { kept: string; merged: string[]; matched_on: "doi" | "title" }[];
