@@ -118,11 +118,30 @@ export interface ItemList {
   items: Item[];
 }
 
+export interface ImportDuplicate {
+  citation_key: string;
+  item_id: string;
+  matched_on: "doi" | "title";
+}
+
 export interface ImportResult {
   bib_file_id: string;
   filename: string;
   imported: number;
+  duplicates: ImportDuplicate[];
   key_collisions: string[];
+}
+
+export interface DedupeResult {
+  merged: number;
+  groups: { kept: string; merged: string[]; matched_on: "doi" | "title" }[];
+}
+
+export interface GenerateResult {
+  created: number;
+  // only for source "ml_tags": items the model just tagged / still without ML tags
+  tagged?: number;
+  remaining?: number;
 }
 
 export type SearchMode = "keyword" | "semantic" | "hybrid";

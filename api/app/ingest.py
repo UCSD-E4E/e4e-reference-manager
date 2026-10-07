@@ -24,6 +24,13 @@ def normalize_doi(doi: str | None) -> str | None:
     return d or None
 
 
+def normalize_title(title: str | None) -> str | None:
+    """Case/punctuation/BibTeX-brace-insensitive title, for duplicate detection."""
+    t = re.sub(r"[{}]", "", (title or "").lower())  # BibTeX case-protection braces
+    t = re.sub(r"[^a-z0-9]+", " ", t).strip()
+    return t or None
+
+
 def gen_citation_key(csl: dict) -> str:
     authors = csl.get("author") or []
     family = (authors[0].get("family") if authors else "") or "ref"

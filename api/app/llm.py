@@ -58,7 +58,7 @@ def build_tag_prompt(csl: dict, taxonomy: list[str] | None = None) -> str:
     return "\n".join(lines)
 
 
-def _clean_tags(values) -> list[str]:
+def clean_tags(values) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for v in values:
@@ -80,7 +80,7 @@ def parse_tag_response(text: str | None) -> list[str]:
         try:
             data = json.loads(array.group(0))
             if isinstance(data, list):
-                return _clean_tags(data)
+                return clean_tags(data)
         except json.JSONDecodeError:
             pass
     obj = re.search(r"\{.*\}", text, re.DOTALL)
@@ -88,7 +88,7 @@ def parse_tag_response(text: str | None) -> list[str]:
         try:
             data = json.loads(obj.group(0))
             if isinstance(data, dict) and isinstance(data.get("tags"), list):
-                return _clean_tags(data["tags"])
+                return clean_tags(data["tags"])
         except json.JSONDecodeError:
             pass
     return []

@@ -10,11 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..audit import item_snapshot, record
 from ..auth import get_current_user
 from ..db import get_session
+from ..dedupe import find_duplicate_groups, merge_into
 from ..deps import item_editor, library_editor
 from ..grobid import extract_header_csl
 from ..ingest import IngestError, fetch_csl, gen_citation_key, normalize_doi
-from ..models import Attachment, Item, Library, Note, User
-from ..schemas import IngestRequest, IngestResult, IngestResultItem, ItemOut, MetadataProposal
+from ..models import Attachment, Item, Library, User
+from ..schemas import (
+    DedupeResult,
+    IngestRequest,
+    IngestResult,
+    IngestResultItem,
+    ItemOut,
+    MetadataProposal,
+)
 from ..storage import download_bytes, upload_bytes
 from .items import _denormalize
 
@@ -191,12 +199,6 @@ async def merge_items(
     if other is None or other.library_id != item.library_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Other item not found in this library")
 
-    for att in list(other.attachments):
-        att.item_id = item.id
-    notes = (await session.execute(select(Note).where(Note.item_id == other_id))).scalars().all()
-    for note in notes:
-        note.item_id = item.id
-
     record(
         session,
         actor=user,
@@ -208,7 +210,45 @@ async def merge_items(
         before=item_snapshot(other),
         after=item_snapshot(item),
     )
-    await session.delete(other)
+    await merge_into(session, item, other)
     await session.commit()
     await session.refresh(item)
     return item
+
+
+@router.post("/libraries/{library_id}/dedupe", response_model=DedupeResult)
+async def dedupe_library(
+    lib: Library = Depends(library_editor),
+    dry_run: bool = Query(False, description="Report the duplicate groups without merging"),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Merge duplicates already in the project (same rule as .bib import: DOI, else
+    normalized title + year). The oldest copy of each paper is kept."""
+    items = (
+        await session.execute(
+            select(Item).where(Item.library_id == lib.id).order_by(Item.created_at, Item.id)
+        )
+    ).scalars().all()
+    groups = find_duplicate_groups(items)
+    if not dry_run:
+        by_id = {i.id: i for i in items}
+        for g in groups:
+            keep = by_id[g["kept"]]
+            for other_id in g["merged"]:
+                other = by_id[other_id]
+                record(
+                    session,
+                    actor=user,
+                    library_id=lib.id,
+                    entity_type="item",
+                    entity_id=keep.id,
+                    operation="update",
+                    summary=f"Merged duplicate “{other.title or other.citation_key}” "
+                    f"(matched on {g['matched_on']})",
+                    before=item_snapshot(other),
+                    after=item_snapshot(keep),
+                )
+                await merge_into(session, keep, other)
+        await session.commit()
+    return DedupeResult(merged=sum(len(g["merged"]) for g in groups), groups=groups)

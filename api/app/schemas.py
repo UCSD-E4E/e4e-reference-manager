@@ -77,10 +77,30 @@ class ItemList(BaseModel):
     items: list[ItemOut]
 
 
+class ImportDuplicate(BaseModel):
+    """An entry skipped because the project already has that paper."""
+
+    citation_key: str
+    item_id: uuid.UUID  # the existing item (or earlier entry of this file) it matched
+    matched_on: str  # doi | title
+
+
+class DedupeGroup(BaseModel):
+    kept: uuid.UUID
+    merged: list[uuid.UUID]
+    matched_on: str  # doi | title
+
+
+class DedupeResult(BaseModel):
+    merged: int
+    groups: list[DedupeGroup]
+
+
 class ImportResult(BaseModel):
     bib_file_id: uuid.UUID
     filename: str
     imported: int
+    duplicates: list[ImportDuplicate] = Field(default_factory=list)
     key_collisions: list[str] = Field(default_factory=list)
 
 
@@ -134,6 +154,10 @@ class TagOut(BaseModel):
     id: uuid.UUID
     name: str
     source: str  # manual | ml
+
+
+class TagsIn(BaseModel):
+    tags: list[str]
 
 
 class SuggestedTags(BaseModel):
