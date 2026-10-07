@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.1.0...v1.2.0) (2026-10-07)
+
+
+### Features
+
+* de-duplicate .bib imports and merge existing duplicates; ML tags fixes ([403f86c](https://github.com/UCSD-E4E/e4e-reference-manager/commit/403f86cb04341bc1513e5ff9226d56cb854bfbff))
+* de-duplicate .bib imports and merge existing duplicates; ML tags fixes ([6dcf30c](https://github.com/UCSD-E4E/e4e-reference-manager/commit/6dcf30c2604446a25849866272350c48d983fbbf))
+
 ## [1.1.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.0.2...v1.1.0) (2026-10-07)
 
 
