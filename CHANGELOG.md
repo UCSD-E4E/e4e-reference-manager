@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.2.0...v1.3.0) (2026-10-07)
+
+
+### Features
+
+* topic auto-groups clustered by paper similarity ([ccc132f](https://github.com/UCSD-E4E/e4e-reference-manager/commit/ccc132faec4ab7e6f9b3a4c17fcd58d21dfb9799))
+* topic auto-groups clustered by paper similarity ([2ad49ee](https://github.com/UCSD-E4E/e4e-reference-manager/commit/2ad49eeac5cbe210e210467b63c9c80a5948dc51))
+
 ## [1.2.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.1.0...v1.2.0) (2026-10-07)
 
 
