@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.3.0...v1.4.0) (2026-10-07)
+
+
+### Features
+
+* paste BibTeX — preview with validation, then add chosen entries ([31536a9](https://github.com/UCSD-E4E/e4e-reference-manager/commit/31536a91c3ab80962d90912fc4d9bf9ef199d0eb))
+* paste BibTeX — preview with validation, then add chosen entries ([6d647e4](https://github.com/UCSD-E4E/e4e-reference-manager/commit/6d647e4c5ea02caa43166724a57ad9d85a112a88))
+
 ## [1.3.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.2.0...v1.3.0) (2026-10-07)
 
 
