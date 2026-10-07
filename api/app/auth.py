@@ -30,7 +30,8 @@ async def sync_user_groups(session: AsyncSession, user: User, group_names: list[
     and grant org admin if they're in the configured admin group."""
     s = get_settings()
     desired_ids = []
-    for name in group_names:
+    # The claim can name a group more than once; one membership row per group.
+    for name in dict.fromkeys(group_names):
         group = await session.scalar(select(Group).where(Group.authentik_ref == name))
         if group is None:
             base = _slugify(name)
