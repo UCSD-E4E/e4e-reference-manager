@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import register_oidc
-from .config import get_settings
+from .config import Settings, get_settings
 from .routers import (
     annotations,
     attachments,
@@ -47,9 +47,19 @@ async def lifespan(app: FastAPI):
     yield
 
 
+def session_cookie_https_only(s: Settings) -> bool:
+    """Mark the session cookie Secure whenever the app is served over HTTPS."""
+    return s.app_base_url.startswith("https://")
+
+
 app = FastAPI(title="e4e Reference Manager API", version="0.1.0", lifespan=lifespan)
 
-app.add_middleware(SessionMiddleware, secret_key=settings.session_secret, same_site="lax")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    same_site="lax",
+    https_only=session_cookie_https_only(settings),
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
