@@ -203,6 +203,23 @@ REFMAN_OIDC_REDIRECT_URI=http://localhost:8000/auth/callback
 Then the SPA's “login” flow redirects through Authentik. (Group/role mapping and a
 single-origin Caddy reverse proxy land in Phase 1.)
 
+## Production deployment (bib.krg.ucsd.edu)
+
+Production runs as the KRG Incus tenant `reference-manager`. krg-infra owns the platform
+(the slot, secrets in OpenBao, the Authentik app, the public route); this repo owns
+everything inside the slot:
+
+- `flake.nix` is the tenant's NixOS config (`mkTenant`), pinned to krg-infra by `flake.lock`.
+- `deploy/incus/` holds the compose stack and the inner Traefik. It serves one origin:
+  `/api/*` → API (prefix stripped, `--root-path /api`), everything else → the static web
+  image (`web/Dockerfile`). PDFs live in the e4e-nas Garage bucket `reference-manager`,
+  reached at `https://s3.e4e.ucsd.edu`.
+- Releasing: tag `vX.Y.Z`. `release.yml` pushes the images to GHCR and opens an
+  `auto-deploy/vX.Y.Z` PR that bumps the pins; merging it deploys via `deploy.yml`.
+
+Full hand-off: krg-infra `docs/handoff/reference-manager/HANDOFF.md` and
+`docs/onboarding-reference-manager.md`.
+
 ## Project layout
 
 ```

@@ -27,7 +27,7 @@ export default defineConfig({
       },
       workbox: {
         // Phase 0: cache the app shell only. Read-only metadata caching is Phase 4.
-        navigateFallbackDenylist: [/^\/(auth|libraries|items|attachments|bib-files)/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/(auth|libraries|items|attachments|bib-files)/],
       },
     }),
   ],

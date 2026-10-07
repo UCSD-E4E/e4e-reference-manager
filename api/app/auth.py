@@ -69,7 +69,7 @@ def register_oidc() -> bool:
         client_id=s.oidc_client_id,
         client_secret=s.oidc_client_secret,
         server_metadata_url=s.oidc_issuer.rstrip("/") + "/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
+        client_kwargs={"scope": "openid email profile groups"},
     )
     return True
 
