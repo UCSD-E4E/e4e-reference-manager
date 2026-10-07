@@ -84,6 +84,7 @@ export const api = {
   createLibrary: (name: string, description = "") =>
     req<Library>("/libraries", { method: "POST", body: JSON.stringify({ name, description }) }),
   getLibrary: (id: string) => req<Library>(`/libraries/${id}`),
+  deleteLibrary: (id: string) => req<void>(`/libraries/${id}`, { method: "DELETE" }),
 
   listItems: (libId: string, q = "") =>
     req<ItemList>(`/libraries/${libId}/items${q ? `?q=${encodeURIComponent(q)}` : ""}`),

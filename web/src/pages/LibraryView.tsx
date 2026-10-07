@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import ValidationBadge from "../components/ValidationBadge";
 import type {
@@ -70,6 +70,27 @@ export default function LibraryView() {
 
   const canEdit = lib?.my_access === "edit" || lib?.my_access === "manage";
   const canManage = lib?.my_access === "manage";
+  const navigate = useNavigate();
+
+  const doDeleteProject = async () => {
+    if (!lib) return;
+    // Typing the name (not just OK) guards against deleting the wrong project.
+    const typed = window.prompt(
+      `Delete “${lib.name}” and everything in it (items, notes, collections, ` +
+        `annotations)? This cannot be undone.\n\nType the project name to confirm:`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== lib.name) {
+      setErr("Project name didn't match — nothing was deleted.");
+      return;
+    }
+    try {
+      await api.deleteLibrary(lib.id);
+      navigate("/");
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
 
   const loadItems = (query = "") =>
     api
@@ -575,6 +596,19 @@ export default function LibraryView() {
           </div>
         ))}
       </div>
+
+      {canManage && (
+        <div className="card">
+          <h2>Delete project</h2>
+          <p className="muted">
+            Permanently deletes this project and all of its items, notes, collections and
+            annotations for everyone it's shared with.
+          </p>
+          <button className="danger" type="button" onClick={doDeleteProject}>
+            Delete project
+          </button>
+        </div>
+      )}
     </div>
   );
 }
