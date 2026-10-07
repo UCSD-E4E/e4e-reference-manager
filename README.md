@@ -214,8 +214,10 @@ everything inside the slot:
   `/api/*` → API (prefix stripped, `--root-path /api`), everything else → the static web
   image (`web/Dockerfile`). PDFs live in the e4e-nas Garage bucket `reference-manager`,
   reached at `https://s3.e4e.ucsd.edu`.
-- Releasing: tag `vX.Y.Z`. `release.yml` pushes the images to GHCR and opens an
-  `auto-deploy/vX.Y.Z` PR that bumps the pins; merging it deploys via `deploy.yml`.
+- Releasing: release-please. Use Conventional Commits (`feat:`, `fix:`, …; squash-merge
+  PR titles when squash-merging). Each push to `main` updates a release PR; merging it tags `vX.Y.Z`,
+  pushes both images to GHCR and opens an `auto-deploy/vX.Y.Z` PR that bumps the pins.
+  Merging that deploys via `deploy.yml`.
 
 Full hand-off: krg-infra `docs/handoff/reference-manager/HANDOFF.md` and
 `docs/onboarding-reference-manager.md`.
