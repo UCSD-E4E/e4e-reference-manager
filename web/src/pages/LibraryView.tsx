@@ -44,6 +44,7 @@ export default function LibraryView() {
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<SearchMode>("keyword");
   const [reindexMsg, setReindexMsg] = useState("");
+  const [dedupeMsg, setDedupeMsg] = useState("");
   const [err, setErr] = useState("");
   const [imp, setImp] = useState<ImportResult | null>(null);
   const [activity, setActivity] = useState<AuditEvent[]>([]);
@@ -128,6 +129,29 @@ export default function LibraryView() {
     }
   };
 
+  const doDedupe = async () => {
+    setErr("");
+    try {
+      const preview = await api.dedupeLibrary(libId, true);
+      if (preview.merged === 0) {
+        setDedupeMsg("No duplicates found.");
+        return;
+      }
+      const ok = window.confirm(
+        `Merge ${preview.merged} duplicate item${preview.merged === 1 ? "" : "s"} into ` +
+          `${preview.groups.length}? The oldest copy of each paper is kept; PDFs, notes, ` +
+          `tags and collections from the copies move onto it.`,
+      );
+      if (!ok) return;
+      const r = await api.dedupeLibrary(libId, false);
+      setDedupeMsg(`Merged ${r.merged} duplicate item${r.merged === 1 ? "" : "s"}.`);
+      loadItems(q);
+      loadMeta();
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
   const doReindex = async () => {
     setReindexMsg("Reindexing embeddings…");
     try {
@@ -170,8 +194,19 @@ export default function LibraryView() {
   const doGenerateAutoGroups = async () => {
     setGenMsg("Generating…");
     try {
+      if (genSource === "ml_tags") setGenMsg("Asking the model to tag untagged items…");
       const r = await api.generateAutoGroups(libId, genSource);
-      setGenMsg(`Created ${r.created} new auto-group${r.created === 1 ? "" : "s"}.`);
+      let msg = `Created ${r.created} new auto-group${r.created === 1 ? "" : "s"}.`;
+      if (r.tagged !== undefined && r.remaining !== undefined) {
+        msg += ` ML-tagged ${r.tagged} item${r.tagged === 1 ? "" : "s"}`;
+        if (r.remaining > 0) {
+          msg +=
+            r.tagged > 0
+              ? `; ${r.remaining} still untagged — run again to continue.`
+              : `; ${r.remaining} untagged and the model gave no tags (is Ollama running?).`;
+        } else msg += ".";
+      }
+      setGenMsg(msg);
       loadAutoGroups();
     } catch (e) {
       setGenMsg("");
@@ -323,6 +358,11 @@ export default function LibraryView() {
             </button>
           )}
           {canEdit && (
+            <button className="secondary" type="button" onClick={doDedupe}>
+              Merge duplicates
+            </button>
+          )}
+          {canEdit && (
             <button
               className="secondary"
               type="button"
@@ -334,10 +374,15 @@ export default function LibraryView() {
           )}
         </div>
         {reindexMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{reindexMsg}</p>}
+        {dedupeMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{dedupeMsg}</p>}
         {validateMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{validateMsg}</p>}
         {imp && (
           <p className={imp.key_collisions.length ? "warn" : "muted"} style={{ marginTop: "0.5rem" }}>
             Imported {imp.imported} entr{imp.imported === 1 ? "y" : "ies"} from {imp.filename}.
+            {imp.duplicates.length > 0 &&
+              ` Skipped ${imp.duplicates.length} already in the project: ${imp.duplicates
+                .map((d) => d.citation_key)
+                .join(", ")}.`}
             {imp.key_collisions.length > 0 &&
               ` Duplicate citation keys flagged (kept as-is): ${imp.key_collisions.join(", ")}.`}
           </p>

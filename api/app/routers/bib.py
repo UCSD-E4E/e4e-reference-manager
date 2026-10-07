@@ -6,12 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
-from ..bibtex import build_bibtex, parse_bibtex
+from ..bibtex import build_bibtex, parse_bibtex, year_from_csl
 from ..db import get_session
 from ..deps import library_access_level, library_editor, library_viewer
+from ..dedupe import match_keys
 from ..models import BibFile, Item, Library, User
 from ..routers.items import _denormalize
-from ..schemas import ImportResult
+from ..schemas import ImportDuplicate, ImportResult
 
 router = APIRouter(tags=["bibtex"])
 
@@ -33,18 +34,38 @@ async def import_bib(
     session.add(bib_file)
     await session.flush()  # assign bib_file.id
 
-    existing = set(
-        (
-            await session.execute(
-                select(Item.citation_key).where(Item.library_id == lib.id)
-            )
-        ).scalars()
+    # Duplicate detection (app.dedupe rule): the same paper is matched by DOI, else by
+    # normalized title + year, against the project's items and this file's own entries.
+    rows = await session.execute(
+        select(Item.id, Item.citation_key, Item.doi, Item.title, Item.year).where(
+            Item.library_id == lib.id
+        )
     )
+    keys: set[str] = set()
+    owner: dict[tuple[str, object], uuid.UUID] = {}
+    for iid, key, doi, title, year in rows:
+        keys.add(key)
+        for k in match_keys(doi, title, year):
+            owner.setdefault(k, iid)
+
+    imported = 0
+    duplicates: list[ImportDuplicate] = []
     collisions: list[str] = []
     for entry in entries:
-        if entry.citation_key and entry.citation_key in existing:
+        csl = entry.csl_json
+        mkeys = match_keys(csl.get("DOI"), csl.get("title"), year_from_csl(csl))
+        hit = next((k for k in mkeys if k in owner), None)
+        if hit is not None:
+            duplicates.append(
+                ImportDuplicate(
+                    citation_key=entry.citation_key, item_id=owner[hit], matched_on=hit[0]
+                )
+            )
+            continue
+
+        if entry.citation_key and entry.citation_key in keys:
             collisions.append(entry.citation_key)
-        existing.add(entry.citation_key)
+        keys.add(entry.citation_key)
         item = Item(
             library_id=lib.id,
             source_file_id=bib_file.id,
@@ -54,12 +75,17 @@ async def import_bib(
         )
         _denormalize(item, entry.csl_json)
         session.add(item)
+        await session.flush()  # assign item.id for later duplicates of it
+        for k in mkeys:
+            owner[k] = item.id
+        imported += 1
 
     await session.commit()
     return ImportResult(
         bib_file_id=bib_file.id,
         filename=bib_file.filename,
-        imported=len(entries),
+        imported=imported,
+        duplicates=duplicates,
         key_collisions=sorted(set(collisions)),
     )
 

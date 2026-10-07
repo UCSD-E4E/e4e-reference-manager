@@ -48,8 +48,10 @@ async def test_bib_import_flags_collisions_and_exports(client, library):
     assert first.json()["imported"] == 1
     assert first.json()["key_collisions"] == []
 
-    again = await client.post(f"/libraries/{library}/import", files={"file": ("a.bib", bib)})
-    assert again.json()["key_collisions"] == ["a1"]  # preserved verbatim, flagged
+    # same key, different paper: kept verbatim and flagged (same paper would be a duplicate)
+    other = b"@article{a1,title={T2},year={2022}}\n"
+    again = await client.post(f"/libraries/{library}/import", files={"file": ("b.bib", other)})
+    assert again.json()["key_collisions"] == ["a1"]
 
     exp = await client.get(f"/libraries/{library}/export.bib")
     assert exp.status_code == 200

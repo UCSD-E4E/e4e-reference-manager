@@ -15,15 +15,17 @@ import uuid
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import Select, func, select, text
+from sqlalchemy import Select, exists, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import llm
 from ..auth import get_current_user
 from ..db import get_session
 from ..deps import _rank, library_access_level, library_editor, library_viewer
 from ..models import AutoGroup, Item, Library, Tag, User, item_tag
 from ..schemas import AutoGroupCreate, AutoGroupGenerate, AutoGroupOut
 from .bib import _bib_response
+from .ml import apply_ml_tags
 
 router = APIRouter(tags=["auto-groups"])
 
@@ -291,6 +293,39 @@ async def _generate_tags(
     return created
 
 
+# Model calls per "generate from ML tags" request. Ollama answers one prompt at a time
+# (seconds each on CPU), so a big project is tagged over several clicks rather than in
+# one request long enough to time out.
+ML_TAG_BATCH = 10
+
+
+async def _ml_tag_untagged(session: AsyncSession, lib: Library) -> tuple[int, int]:
+    """Ask the model for tags on (up to ML_TAG_BATCH) items that have no ML tags yet.
+    Returns (items tagged, items still without ML tags)."""
+    has_ml_tag = exists(
+        select(item_tag.c.item_id)
+        .join(Tag, Tag.id == item_tag.c.tag_id)
+        .where(item_tag.c.item_id == Item.id, Tag.source == "ml")
+    )
+    untagged = select(Item).where(Item.library_id == lib.id, ~has_ml_tag)
+    total = await session.scalar(select(func.count()).select_from(untagged.subquery())) or 0
+    # Random order: items the model has nothing to say about can't monopolise every batch.
+    batch = (
+        await session.execute(untagged.order_by(func.random()).limit(ML_TAG_BATCH))
+    ).scalars().all()
+    tagged = 0
+    for item in batch:
+        names = await llm.suggest_tags(item.csl_json)
+        if not names:
+            # Usually the model is down or timing out (up to 2 min per call); don't wait
+            # out the rest of the batch. Nothing is lost — the item stays untagged.
+            break
+        await apply_ml_tags(session, item, names)
+        await session.flush()  # so the next item reuses tags created for this one
+        tagged += 1
+    return tagged, total - tagged
+
+
 @router.post("/libraries/{library_id}/auto-groups/generate")
 async def generate_auto_groups(
     payload: AutoGroupGenerate,
@@ -301,7 +336,10 @@ async def generate_auto_groups(
     if src in ("year", "type", "journal", "author"):
         created = await _generate_field(session, lib, src)
     elif src == "ml_tags":
+        tagged, remaining = await _ml_tag_untagged(session, lib)
         created = await _generate_tags(session, lib, source="ml")
+        await session.commit()
+        return {"created": len(created), "tagged": tagged, "remaining": remaining}
     elif src == "manual_tags":
         created = await _generate_tags(session, lib, source="manual")
     elif src == "all_tags":

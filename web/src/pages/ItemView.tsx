@@ -153,7 +153,7 @@ export default function ItemView() {
 
   const applySuggested = async () => {
     try {
-      await api.suggestTags(itemId, true);
+      await api.suggestTags(itemId, true, suggested);
       setSuggested([]);
       setTags(await api.listItemTags(itemId));
     } catch (e) {

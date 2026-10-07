@@ -6,6 +6,8 @@ import type {
   AutoGroupGenerateSource,
   AutoGroupKind,
   Collection,
+  DedupeResult,
+  GenerateResult,
   Group,
   ImportResult,
   IngestResult,
@@ -102,6 +104,8 @@ export const api = {
     req<Item>(`/items/${id}`, { method: "PATCH", body: JSON.stringify({ version, csl_json }) }),
   deleteItem: (id: string) => req<void>(`/items/${id}`, { method: "DELETE" }),
 
+  dedupeLibrary: (libId: string, dryRun: boolean) =>
+    req<DedupeResult>(`/libraries/${libId}/dedupe?dry_run=${dryRun}`, { method: "POST" }),
   importBib: (libId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -135,7 +139,7 @@ export const api = {
     }),
   deleteAutoGroup: (id: string) => req<void>(`/auto-groups/${id}`, { method: "DELETE" }),
   generateAutoGroups: (libId: string, source: AutoGroupGenerateSource) =>
-    req<{ created: number }>(`/libraries/${libId}/auto-groups/generate`, {
+    req<GenerateResult>(`/libraries/${libId}/auto-groups/generate`, {
       method: "POST",
       body: JSON.stringify({ source }),
     }),
@@ -222,8 +226,12 @@ export const api = {
 
   // Local ML (Phase 3): tags + summaries
   listItemTags: (itemId: string) => req<Tag[]>(`/items/${itemId}/tags`),
-  suggestTags: (itemId: string, apply: boolean) =>
-    req<SuggestedTags>(`/items/${itemId}/suggest-tags?apply=${apply}`, { method: "POST" }),
+  // With `tags`, saves exactly those (no model call) — used to apply what was shown.
+  suggestTags: (itemId: string, apply: boolean, tags?: string[]) =>
+    req<SuggestedTags>(`/items/${itemId}/suggest-tags?apply=${apply}`, {
+      method: "POST",
+      ...(tags ? { body: JSON.stringify({ tags }) } : {}),
+    }),
   summarizeItem: (itemId: string) =>
     req<{ summary: string }>(`/items/${itemId}/summary`, { method: "POST" }),
 
