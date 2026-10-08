@@ -33,7 +33,10 @@ _HEADERS = {"User-Agent": _UA, "Accept": "application/json"}
 TITLE_MATCH_THRESHOLD = 0.6
 
 _ATOM = "{http://www.w3.org/2005/Atom}"
-_ARXIV_ID_RE = re.compile(r"arxiv[:/]\s*([0-9]{4}\.[0-9]{4,5})", re.IGNORECASE)
+# arXiv:2101.00001, arxiv/2101.00001, arxiv.org/abs|pdf/2101.00001, 10.48550/arXiv.2101.00001
+_ARXIV_ID_RE = re.compile(
+    r"arxiv(?:\.org/(?:abs|pdf)/|[:/.]\s*)([0-9]{4}\.[0-9]{4,5})", re.IGNORECASE
+)
 
 
 # ---------- pure helpers ----------
