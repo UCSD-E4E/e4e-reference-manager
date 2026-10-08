@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.4.0...v1.5.0) (2026-10-08)
+
+
+### Features
+
+* find a paper's open-access PDF online and attach it ([bd4ddb3](https://github.com/UCSD-E4E/e4e-reference-manager/commit/bd4ddb3caceaa9ebbf9658f18df5b9039bcfa786))
+* find a paper's open-access PDF online and attach it ([1a0383c](https://github.com/UCSD-E4E/e4e-reference-manager/commit/1a0383cf369c0c181ffcdde3884210dcb7e79aa2))
+
 ## [1.4.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.3.0...v1.4.0) (2026-10-07)
 
 
