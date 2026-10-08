@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
@@ -15,6 +15,8 @@ export default function ItemView() {
   const { itemId = "" } = useParams();
   const [item, setItem] = useState<Item | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  const [pdfMsg, setPdfMsg] = useState("");
+  const uploadInput = useRef<HTMLInputElement>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [history, setHistory] = useState<AuditEvent[]>([]);
   const [noteBody, setNoteBody] = useState("");
@@ -87,7 +89,9 @@ export default function ItemView() {
   }, [itemId]);
 
   const onUpload = async (e: FormEvent<HTMLInputElement>) => {
-    const file = e.currentTarget.files?.[0];
+    // Grab the element now: React clears e.currentTarget once the handler awaits.
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
     try {
       await api.uploadAttachment(itemId, file);
@@ -95,7 +99,21 @@ export default function ItemView() {
     } catch (e) {
       setErr(String(e));
     }
-    e.currentTarget.value = "";
+    input.value = ""; // so picking the same file again still fires onChange
+  };
+
+  const findPdf = async () => {
+    setPdfMsg("Looking for an open-access copy (Unpaywall, arXiv)…");
+    try {
+      const r = await api.fetchPdf(itemId);
+      const host = new URL(r.url).hostname;
+      setPdfMsg(`Attached an open-access PDF from ${host} (via ${r.source}).`);
+      reload();
+    } catch (e) {
+      const msg = String(e);
+      setPdfMsg(msg.startsWith("Error: 404") ? msg.replace(/^Error: 404: /, "") : "");
+      if (!msg.startsWith("Error: 404")) setErr(msg);
+    }
   };
 
   const addNote = async (e: FormEvent) => {
@@ -355,13 +373,18 @@ export default function ItemView() {
         <h2>PDFs</h2>
         {canEdit && (
           <div className="row">
-            <label
-              className="secondary"
-              style={{ padding: "0.55rem 0.7rem", borderRadius: 8, cursor: "pointer" }}
-            >
+            <button className="secondary" type="button" onClick={() => uploadInput.current?.click()}>
               Upload PDF
-              <input type="file" accept="application/pdf" onChange={onUpload} style={{ display: "none" }} />
-            </label>
+            </button>
+            <input ref={uploadInput} type="file" accept="application/pdf" onChange={onUpload} hidden />
+            <button
+              className="secondary"
+              type="button"
+              onClick={findPdf}
+              title="Fetch a legal open-access copy (Unpaywall by DOI, then arXiv)"
+            >
+              Find PDF online
+            </button>
             {item.attachments.length > 0 && (
               <button className="secondary" type="button" onClick={fillFromPdf}>
                 Fill metadata from PDF
@@ -369,6 +392,7 @@ export default function ItemView() {
             )}
           </div>
         )}
+        {pdfMsg && <p className="muted">{pdfMsg}</p>}
         {item.attachments.length === 0 && <p className="muted">No PDFs attached.</p>}
         {item.attachments.map((a) => (
           <div className="item-row" key={a.id}>

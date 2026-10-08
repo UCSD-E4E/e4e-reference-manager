@@ -60,6 +60,12 @@ export interface IngestResult {
   results: IngestResultItem[];
 }
 
+export interface FetchedPdf {
+  attachment: Attachment;
+  source: "unpaywall" | "arxiv";
+  url: string;
+}
+
 export interface Attachment {
   id: string;
   filename: string;

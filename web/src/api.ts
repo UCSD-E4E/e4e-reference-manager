@@ -7,6 +7,7 @@ import type {
   AutoGroupKind,
   Collection,
   DedupeResult,
+  FetchedPdf,
   GenerateResult,
   Group,
   ImportResult,
@@ -156,6 +157,9 @@ export const api = {
     }),
   exportAutoGroupUrl: (id: string) => `${API_URL}/auto-groups/${id}/export.bib`,
 
+  // Find a legal open-access copy online (Unpaywall, arXiv) and attach it.
+  fetchPdf: (itemId: string) =>
+    req<FetchedPdf>(`/items/${itemId}/fetch-pdf`, { method: "POST" }),
   uploadAttachment: (itemId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);

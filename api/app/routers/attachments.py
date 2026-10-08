@@ -1,18 +1,19 @@
 import hashlib
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .. import oa_pdf
 from ..auth import get_current_user
 from ..db import get_session
 from ..deps import item_editor, library_access_level
 from ..models import _ACCESS_RANK, Attachment, Item, Library, User
 from ..pdf import extract_pdf_text
-from ..schemas import AttachmentOut
+from ..schemas import AttachmentOut, FetchedPdf
 from ..storage import download_bytes, presigned_get_url, upload_bytes
 
 router = APIRouter(tags=["attachments"])
@@ -26,17 +27,12 @@ async def _refresh_item_pdf_text(session: AsyncSession, item: Item) -> None:
     item.pdf_text = "\n\n".join(t for (t,) in rows.all() if t)
 
 
-@router.post("/items/{item_id}/attachments", response_model=AttachmentOut, status_code=201)
-async def upload_attachment(
-    file: UploadFile,
-    item: Item = Depends(item_editor),
-    session: AsyncSession = Depends(get_session),
-):
-    data = await file.read()
-    if not data:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
+async def _store_attachment(
+    session: AsyncSession, item: Item, data: bytes, filename: str, content_type: str
+) -> Attachment:
+    """Upload bytes to object storage, extract PDF text, and attach them to the item.
+    Commits. Content-addressed key, so identical bytes share one stored object."""
     sha256 = hashlib.sha256(data).hexdigest()
-    content_type = file.content_type or "application/pdf"
     key = f"{item.library_id}/{item.id}/{sha256}"
 
     await run_in_threadpool(upload_bytes, key, data, content_type)
@@ -48,7 +44,7 @@ async def upload_attachment(
     )
     att = Attachment(
         item_id=item.id,
-        filename=file.filename or "document.pdf",
+        filename=filename,
         content_type=content_type,
         size=len(data),
         sha256=sha256,
@@ -61,6 +57,50 @@ async def upload_attachment(
     await session.commit()
     await session.refresh(att)
     return att
+
+
+@router.post("/items/{item_id}/attachments", response_model=AttachmentOut, status_code=201)
+async def upload_attachment(
+    file: UploadFile,
+    item: Item = Depends(item_editor),
+    session: AsyncSession = Depends(get_session),
+):
+    data = await file.read()
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
+    return await _store_attachment(
+        session,
+        item,
+        data,
+        file.filename or "document.pdf",
+        file.content_type or "application/pdf",
+    )
+
+
+@router.post("/items/{item_id}/fetch-pdf", response_model=FetchedPdf, status_code=201)
+async def fetch_pdf(
+    response: Response,
+    item: Item = Depends(item_editor),
+    session: AsyncSession = Depends(get_session),
+):
+    """Find a legal open-access copy online (Unpaywall by DOI, then arXiv) and attach it."""
+    found = await oa_pdf.fetch_open_access_pdf(item.csl_json or {})
+    if found is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No open-access PDF found (Unpaywall, arXiv). Paywalled papers can't be "
+            "fetched; upload the PDF instead.",
+        )
+    data, source, url = found
+    sha256 = hashlib.sha256(data).hexdigest()
+    existing = next((a for a in item.attachments if a.sha256 == sha256), None)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return FetchedPdf(attachment=existing, source=source, url=url)
+    att = await _store_attachment(
+        session, item, data, f"{item.citation_key or 'paper'}.pdf", "application/pdf"
+    )
+    return FetchedPdf(attachment=att, source=source, url=url)
 
 
 async def _owned_attachment(

@@ -41,6 +41,12 @@ class AttachmentOut(BaseModel):
     created_at: datetime
 
 
+
+class FetchedPdf(BaseModel):
+    attachment: AttachmentOut
+    source: str  # unpaywall | arxiv
+    url: str
+
 class ItemCreate(BaseModel):
     citation_key: str = ""
     type: str = "document"
