@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.5.0...v1.5.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* PDF viewer "Could not load this PDF" — serve .mjs as JavaScript ([b2d47f4](https://github.com/UCSD-E4E/e4e-reference-manager/commit/b2d47f48f8a0cd4ed63236c931410d8de90b2ed0))
+* PDF viewer "Could not load this PDF" — serve .mjs as JavaScript ([132f73c](https://github.com/UCSD-E4E/e4e-reference-manager/commit/132f73caf4e19609816ff4b4bcde62c369174ef8))
+
 ## [1.5.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.4.0...v1.5.0) (2026-10-08)
 
 
