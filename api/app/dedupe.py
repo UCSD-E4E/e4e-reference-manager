@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .ingest import normalize_doi, normalize_title
 from .models import Item, Note, item_collection, item_tag
-from .routers.items import _denormalize
+from .routers.items import apply_changes
 
 
 def match_keys(doi: str | None, title: str | None, year: int | None) -> list[tuple[str, object]]:
@@ -69,8 +69,7 @@ async def merge_into(session: AsyncSession, keep: Item, other: Item) -> None:
     for k, v in (other.csl_json or {}).items():
         if v and not merged.get(k):
             merged[k] = v
-    if merged != (keep.csl_json or {}):
-        _denormalize(keep, merged)
+    if apply_changes(keep, csl=merged):
         keep.version += 1
 
     await session.delete(other)

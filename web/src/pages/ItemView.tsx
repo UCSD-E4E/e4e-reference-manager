@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
+import ItemEditor from "../components/ItemEditor";
 import ValidationBadge from "../components/ValidationBadge";
 import type { AuditEvent, Collection, Item, Note, PdfValidationResult, Tag } from "../types";
 
@@ -16,6 +17,7 @@ export default function ItemView() {
   const [item, setItem] = useState<Item | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [pdfMsg, setPdfMsg] = useState("");
+  const [editing, setEditing] = useState(false);
   const uploadInput = useRef<HTMLInputElement>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [history, setHistory] = useState<AuditEvent[]>([]);
@@ -200,9 +202,26 @@ export default function ItemView() {
       <p className="muted">
         <Link to={`/libraries/${item.library_id}`}>← Back to project</Link>
       </p>
-      <h1>{item.title || "(untitled)"}</h1>
+      <div className="row">
+        <h1 className="grow">{item.title || "(untitled)"}</h1>
+        {canEdit && !editing && (
+          <button className="secondary" type="button" onClick={() => setEditing(true)}>
+            Edit
+          </button>
+        )}
+      </div>
       {err && <p className="error">{err}</p>}
 
+      {editing ? (
+        <ItemEditor
+          item={item}
+          onCancel={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            reload();
+          }}
+        />
+      ) : (
       <div className="card">
         <div className="muted">
           <span className="tag">{item.type}</span> {item.citation_key}
@@ -218,6 +237,7 @@ export default function ItemView() {
           </p>
         )}
       </div>
+      )}
 
       <div className="card">
         <h2>
