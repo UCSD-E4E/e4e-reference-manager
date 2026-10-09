@@ -102,8 +102,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ citation_key, type, csl_json }),
     }),
-  updateItem: (id: string, version: number, csl_json: object) =>
-    req<Item>(`/items/${id}`, { method: "PATCH", body: JSON.stringify({ version, csl_json }) }),
+  updateItem: (
+    id: string,
+    version: number,
+    csl_json: object,
+    extra: { citation_key?: string; type?: string } = {},
+  ) =>
+    req<Item>(`/items/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ version, csl_json, ...extra }),
+    }),
   deleteItem: (id: string) => req<void>(`/items/${id}`, { method: "DELETE" }),
 
   previewPaste: (libId: string, bibtex: string) =>

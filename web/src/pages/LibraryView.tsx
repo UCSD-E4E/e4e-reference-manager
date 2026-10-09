@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import PasteBibtex from "../components/PasteBibtex";
+import { CSL_TYPES } from "../csl";
 import ValidationBadge from "../components/ValidationBadge";
 import type {
   AuditEvent,
@@ -25,17 +26,6 @@ const GEN_SOURCES: { value: AutoGroupGenerateSource; label: string }[] = [
   { value: "ml_tags", label: "From ML-suggested tags (shared by 3+ papers)" },
   { value: "manual_tags", label: "From manual tags" },
   { value: "all_tags", label: "From all tags" },
-];
-
-const CSL_TYPES = [
-  "article-journal",
-  "paper-conference",
-  "book",
-  "chapter",
-  "report",
-  "thesis",
-  "webpage",
-  "document",
 ];
 
 export default function LibraryView() {

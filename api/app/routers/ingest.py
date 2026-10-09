@@ -24,7 +24,7 @@ from ..schemas import (
     MetadataProposal,
 )
 from ..storage import download_bytes, upload_bytes
-from .items import _denormalize
+from .items import _denormalize, apply_changes
 
 router = APIRouter(tags=["ingest"])
 
@@ -114,7 +114,7 @@ async def extract_metadata(
             continue  # don't override the curated type
         if not merged.get(k):
             merged[k] = v
-    _denormalize(item, merged)
+    apply_changes(item, csl=merged)
     item.version += 1
     record(
         session,
