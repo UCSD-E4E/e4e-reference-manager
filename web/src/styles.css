@@ -91,3 +91,6 @@ button:disabled { opacity: 0.5; cursor: default; }
   .content { padding: 0.75rem; }
   .grow { flex-basis: 100%; }
 }
+.editor label { display: block; margin-bottom: 0.6rem; font-size: 0.9rem; }
+.editor label > input, .editor label > select, .editor label > textarea { margin-top: 0.2rem; }
+.editor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0 0.75rem; }

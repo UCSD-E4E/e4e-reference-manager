@@ -43,6 +43,33 @@ def _denormalize(item: Item, csl: dict) -> None:
     item.search_text = _search_text(item, csl)
 
 
+def apply_changes(
+    item: Item,
+    *,
+    csl: dict | None = None,
+    citation_key: str | None = None,
+    type: str | None = None,
+) -> bool:
+    """Apply edits to an existing item. Returns True if anything changed.
+
+    An imported item keeps its original BibTeX so export can re-emit it verbatim — but
+    only while that text still describes the item. Once its key, type or CSL changes,
+    the original is dropped and export regenerates the entry from the current data."""
+    changed = False
+    if citation_key is not None and citation_key != item.citation_key:
+        item.citation_key = citation_key
+        changed = True
+    if type is not None and type != item.type:
+        item.type = type
+        changed = True
+    if csl is not None and csl != (item.csl_json or {}):
+        _denormalize(item, csl)
+        changed = True
+    if changed:
+        item.raw_bibtex = None
+    return changed
+
+
 @router.get("/libraries/{library_id}/items", response_model=ItemList)
 async def list_items(
     lib: Library = Depends(library_viewer),
@@ -110,12 +137,11 @@ async def update_item(
             f"Version conflict: item is at version {item.version}, you sent {payload.version}",
         )
     before = item_snapshot(item)
-    if payload.citation_key is not None:
-        item.citation_key = payload.citation_key
-    if payload.type is not None:
-        item.type = payload.type
-    if payload.csl_json is not None:
-        _denormalize(item, payload.csl_json)
+    csl_changed = payload.csl_json is not None and payload.csl_json != (item.csl_json or {})
+    apply_changes(
+        item, csl=payload.csl_json, citation_key=payload.citation_key, type=payload.type
+    )
+    if csl_changed:
         vec = await embeddings.embed_item_csl(payload.csl_json)
         if vec is not None:
             item.embedding = vec
@@ -184,9 +210,12 @@ async def restore_item(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That event has no restorable snapshot")
 
     before = item_snapshot(item)
-    item.citation_key = snapshot.get("citation_key", item.citation_key)
-    item.type = snapshot.get("type", item.type)
-    _denormalize(item, snapshot.get("csl_json", item.csl_json))
+    apply_changes(
+        item,
+        csl=snapshot.get("csl_json"),
+        citation_key=snapshot.get("citation_key"),
+        type=snapshot.get("type"),
+    )
     item.version += 1
     record(
         session,
