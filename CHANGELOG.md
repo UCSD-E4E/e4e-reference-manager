@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.5.1...v1.6.0) (2026-10-12)
+
+
+### Features
+
+* edit references; edits reach the exported .bib ([b26003b](https://github.com/UCSD-E4E/e4e-reference-manager/commit/b26003b7cfeaa34b7ae534c843be379123824990))
+* edit references; edits reach the exported .bib ([437ca2d](https://github.com/UCSD-E4E/e4e-reference-manager/commit/437ca2d340e11b229615bad6f9c31e150934565b))
+
 ## [1.5.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.5.0...v1.5.1) (2026-10-08)
 
 
