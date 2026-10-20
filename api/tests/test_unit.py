@@ -1,4 +1,6 @@
 """Pure unit tests (no DB, no network) for bibtex / ingest / grobid logic."""
+import pytest
+
 from app.bibtex import build_bibtex, parse_bibtex, year_from_csl
 from app.grobid import extract_header_csl, parse_tei_header
 from app.ingest import gen_citation_key, normalize_doi
@@ -112,3 +114,22 @@ async def test_extract_header_requests_tei_not_bibtex(monkeypatch):
     assert captured["headers"].get("Accept") == "application/xml"
     assert csl["title"] == "Sample Paper"
     assert csl["author"][0]["family"] == "Smith"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (
+            "{DSL} Modems with Analog Voice Band Support",
+            "DSL Modems with Analog Voice Band Support",
+        ),
+        ("{{A Fully Braced Title}}", "A Fully Braced Title"),
+        ("Coral {Reef} {CNN}s for {AUV}s", "Coral Reef CNNs for AUVs"),
+        ("Plain Title", "Plain Title"),
+        (r"Costs in 100\{\} units", r"Costs in 100\{\} units"),  # escaped braces stay
+    ],
+)
+def test_bibtex_title_protective_braces_are_removed(raw, expected):
+    [entry] = parse_bibtex(f"@article{{k, title = {{{raw}}}, journal = {{{{IEEE}} Sensors}}}}")
+    assert entry.csl_json["title"] == expected
+    assert entry.csl_json["container-title"] == "IEEE Sensors"

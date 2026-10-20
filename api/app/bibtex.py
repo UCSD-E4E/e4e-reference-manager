@@ -5,6 +5,7 @@ also parse a best-effort CSL-JSON representation for display, search, and editin
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import bibtexparser
@@ -72,23 +73,32 @@ def _split_authors(value: str) -> list[dict]:
     return people
 
 
+_UNESCAPED_BRACE = re.compile(r"(?<!\\)[{}]")
+
+
+def _strip_braces(value: str) -> str:
+    """Drop BibTeX's protective braces (`{DSL} Modems`, `{{Whole Title}}`) but keep
+    escaped ones (`\\{`)."""
+    return _UNESCAPED_BRACE.sub("", value).strip()
+
+
 def _entry_to_csl(entry: dict) -> tuple[str, dict]:
     bib_type = entry.get("ENTRYTYPE", "misc").lower()
     csl_type = _BIBTEX_TO_CSL_TYPE.get(bib_type, "document")
     csl: dict = {"type": csl_type, "id": entry.get("ID", "")}
 
     if title := entry.get("title"):
-        csl["title"] = title.strip("{}").strip()
+        csl["title"] = _strip_braces(title)
     if author := entry.get("author"):
         csl["author"] = _split_authors(author)
     if editor := entry.get("editor"):
         csl["editor"] = _split_authors(editor)
     if journal := (entry.get("journal") or entry.get("journaltitle")):
-        csl["container-title"] = journal
+        csl["container-title"] = _strip_braces(journal)
     elif booktitle := entry.get("booktitle"):
-        csl["container-title"] = booktitle
+        csl["container-title"] = _strip_braces(booktitle)
     if publisher := entry.get("publisher"):
-        csl["publisher"] = publisher
+        csl["publisher"] = _strip_braces(publisher)
     if volume := entry.get("volume"):
         csl["volume"] = volume
     if number := entry.get("number"):

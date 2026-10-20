@@ -247,15 +247,16 @@ The **API tokens** page shows this command with your new token filled in.
 | `add_reference` | Add by DOI, arXiv id, PMID, ISBN or URL (duplicates by DOI, or by title and year, are skipped) |
 | `import_bibtex` | Add BibTeX entries (duplicates are skipped; entries are validated) |
 | `add_note`, `create_collection`, `add_to_collection` | Annotate and organise |
+| `update_reference` | Edit metadata fields (partial, version-checked), then re-validate |
 | `validate_reference` | Re-check a reference against Crossref/arXiv; replaces its stored verdict |
 | `get_pdf_text`, `get_pdf_url` | Read an attached PDF's text (paged), or get a short-lived download link |
 | `find_pdf`, `find_library_pdfs` | Find and attach legal open-access PDFs (Unpaywall, arXiv) for a reference or a library |
 
 - Every tool calls the REST API in-process with the caller's token. Permissions,
   validation and the activity history are the same as in the web app.
-- Tools add and organise. None deletes anything or edits a reference's metadata. The one
-  update is `validate_reference`, which replaces the stored validation verdict and needs
-  edit access.
+- Tools add, organise and edit, but never delete. Edits need edit access, are recorded in
+  the reference's history (undo them from the web app), and `update_reference` refuses
+  to overwrite a newer version than the one the agent read.
 - The server is stateless streamable HTTP with JSON responses (`app/mcp_server.py`).
   Requests without a valid Bearer token get a 401, even with `REFMAN_DEV_AUTH`.
 - Local development: create a token in the local web app, then point the client at

@@ -6,9 +6,9 @@ HTTP, stateless, JSON responses. Clients authenticate with a personal API token
 
 Each tool is a thin wrapper over the REST API, called in-process with the caller's own
 Authorization header, so tools get exactly the REST endpoints' permissions, validation
-and audit trail, and no logic is duplicated here. Tools add and organise; none deletes
-anything or edits a reference's metadata. The one update is validate_reference, which
-refreshes a reference's stored validation verdict.
+and audit trail, and no logic is duplicated here. Tools add, organise and edit, but
+never delete. Edits (update_reference, and validate_reference's stored verdict) need
+edit access and are recorded in the reference's history, so they can be undone.
 """
 from __future__ import annotations
 
@@ -43,7 +43,8 @@ mcp = MCPServer(
         "(verified / metadata_mismatch / not_found / unverifiable); validate_reference "
         "re-checks it against Crossref/arXiv. PDFs: get_reference lists a reference's "
         "attachments; read one with get_pdf_text, or fetch a missing open-access copy with "
-        "find_pdf."
+        "find_pdf. To fix metadata, call get_reference, then update_reference with its "
+        "`version`; edits are re-validated and can be undone from the web app."
     ),
 )
 
@@ -62,6 +63,11 @@ _CHECK_EXTERNAL = ToolAnnotations(
 # Downloads PDFs from outside (Unpaywall, arXiv) and attaches them; re-runs are no-ops.
 _FETCH_EXTERNAL = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
+)
+# Overwrites a reference's metadata (recorded in its history; undoable in the web app),
+# then re-checks it against Crossref/arXiv.
+_UPDATE = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True
 )
 
 Limit = Annotated[int, Field(ge=1, le=200, description="Results per page (1-200)")]
@@ -216,6 +222,7 @@ async def get_reference(ctx: Context, reference_id: uuid.UUID) -> dict:
     return {
         **_summary(item),
         "library_id": item["library_id"],
+        "version": item["version"],
         "csl_json": item["csl_json"],
         "validation_details": item.get("validation"),
         "attachments": [
@@ -367,6 +374,58 @@ async def find_library_pdfs(
     if after is not None:
         params["after"] = str(after)
     return await _json(ctx, "POST", f"/libraries/{library_id}/fetch-pdfs", params=params)
+
+
+# ── Tools: editing ──────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool(annotations=_UPDATE)
+async def update_reference(
+    ctx: Context,
+    reference_id: uuid.UUID,
+    version: int,
+    changes: dict[str, Any] | None = None,
+    citation_key: str | None = None,
+) -> dict:
+    """Edit a reference's metadata. `changes` sets CSL-JSON fields, e.g. title, author
+    ([{"family": ..., "given": ...}]), issued ({"date-parts": [[2021]]}), DOI, URL,
+    container-title, volume, issue, page, publisher, type, note. A null value removes a
+    field; fields you don't mention are kept. Pass the `version` from get_reference: if
+    someone changed the reference since, the edit is refused. Every edit is recorded in
+    the reference's history and can be undone in the web app. Afterwards the reference
+    is re-validated against Crossref/arXiv and the new verdict is returned."""
+    if not changes and citation_key is None:
+        raise ToolError("Nothing to change: pass `changes` and/or `citation_key`")
+    async with _caller_api(ctx) as api:
+        item = _checked(await api.get(f"/items/{reference_id}")).json()
+        body: dict[str, Any] = {"version": version}
+        if changes:
+            csl = dict(item["csl_json"] or {})
+            for field, value in changes.items():
+                if value is None:
+                    csl.pop(field, None)
+                else:
+                    csl[field] = value
+            body["csl_json"] = csl
+        if citation_key is not None:
+            body["citation_key"] = citation_key
+        r = await api.patch(f"/items/{reference_id}", json=body)
+        if r.status_code == 409:
+            raise ToolError(
+                f"{_error_message(r)}. Someone else changed this reference: call "
+                "get_reference for the current version, then retry your edit."
+            )
+        updated = _checked(r).json()
+        # The edit is saved either way; a failed re-check is reported, not raised.
+        check = await api.post(f"/items/{reference_id}/validate")
+    out = {**_summary(updated), "version": updated["version"]}
+    if check.is_error:
+        out["validation"] = "error"
+        out["validation_error"] = _error_message(check)
+    else:
+        out["validation"] = check.json()["status"]
+        out["validation_details"] = check.json()
+    return out
 
 
 # ── HTTP endpoint ───────────────────────────────────────────────────────────────────────
