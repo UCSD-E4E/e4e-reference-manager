@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.2](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.11.1...v1.11.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* prune superseded release images regardless of age ([a53bff5](https://github.com/UCSD-E4E/e4e-reference-manager/commit/a53bff5d76aa564ec2e3a357de3a09fd8477a4b5))
+* prune superseded release images regardless of age ([669d052](https://github.com/UCSD-E4E/e4e-reference-manager/commit/669d0528c1e0c6354d2e06823334bd4172e9e978))
+
 ## [1.11.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.11.0...v1.11.1) (2026-10-20)
 
 
