@@ -13,6 +13,8 @@ import type {
   ImportResult,
   Item,
   Library,
+  LibraryPdfFetch,
+  LibraryPdfFetchCounts,
   SearchMode,
   Share,
 } from "../types";
@@ -56,6 +58,8 @@ export default function LibraryView() {
   const [genMsg, setGenMsg] = useState("");
   const [searchAgName, setSearchAgName] = useState("");
   const [validateMsg, setValidateMsg] = useState("");
+  const [fetchPdfsMsg, setFetchPdfsMsg] = useState("");
+  const [fetchingPdfs, setFetchingPdfs] = useState(false);
 
   // manual add form
   const [key, setKey] = useState("");
@@ -121,6 +125,41 @@ export default function LibraryView() {
     } catch (e) {
       setValidateMsg("");
       setErr(String(e));
+    }
+  };
+
+  const doFetchPdfs = async () => {
+    setErr("");
+    setFetchingPdfs(true);
+    const t: LibraryPdfFetchCounts = {
+      checked: 0,
+      attached: 0,
+      already_had_pdf: 0,
+      not_found: 0,
+      no_identifier: 0,
+      failed: 0,
+    };
+    const summary = () =>
+      `attached ${t.attached}, ${t.already_had_pdf} already had a PDF, ` +
+      `${t.not_found} no open-access copy, ${t.no_identifier} without a DOI/arXiv id` +
+      (t.failed ? `, ${t.failed} failed (run again to retry)` : "");
+    setFetchPdfsMsg("Looking for open-access PDFs (Unpaywall, arXiv)…");
+    try {
+      // The server works in small batches so no single request runs long; loop until done.
+      let after: string | null = null;
+      do {
+        const b: LibraryPdfFetch = await api.fetchLibraryPdfs(libId, after);
+        for (const k of Object.keys(t) as (keyof LibraryPdfFetchCounts)[]) t[k] += b[k];
+        after = b.next_after;
+        if (after) setFetchPdfsMsg(`Checked ${t.checked} so far: ${summary()}…`);
+      } while (after);
+      setFetchPdfsMsg(`Checked ${t.checked}: ${summary()}.`);
+    } catch (e) {
+      setFetchPdfsMsg(t.checked ? `Stopped after ${t.checked}: ${summary()}.` : "");
+      setErr(String(e));
+    } finally {
+      setFetchingPdfs(false);
+      runSearch(q); // refresh 📎 counts, keeping the current search mode
     }
   };
 
@@ -383,10 +422,22 @@ export default function LibraryView() {
               Validate sources
             </button>
           )}
+          {canEdit && (
+            <button
+              className="secondary"
+              type="button"
+              onClick={doFetchPdfs}
+              disabled={fetchingPdfs}
+              title="Fetch a legal open-access copy (Unpaywall by DOI, then arXiv) for every reference without a PDF"
+            >
+              {fetchingPdfs ? "Finding PDFs…" : "Find PDFs"}
+            </button>
+          )}
         </div>
         {reindexMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{reindexMsg}</p>}
         {dedupeMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{dedupeMsg}</p>}
         {validateMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{validateMsg}</p>}
+        {fetchPdfsMsg && <p className="muted" style={{ marginTop: "0.5rem" }}>{fetchPdfsMsg}</p>}
         {imp && (
           <p className={imp.key_collisions.length ? "warn" : "muted"} style={{ marginTop: "0.5rem" }}>
             Imported {imp.imported} entr{imp.imported === 1 ? "y" : "ies"} from {imp.filename}.

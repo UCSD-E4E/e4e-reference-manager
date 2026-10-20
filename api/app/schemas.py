@@ -47,6 +47,17 @@ class FetchedPdf(BaseModel):
     source: str  # unpaywall | arxiv
     url: str
 
+
+class LibraryPdfFetch(BaseModel):
+    """One batch of a library-wide open-access PDF fetch."""
+    checked: int
+    attached: int
+    already_had_pdf: int
+    not_found: int  # had a DOI/arXiv id, but no open-access copy
+    no_identifier: int  # nothing to look up
+    failed: int  # storage/extraction error; safe to retry
+    next_after: uuid.UUID | None  # pass back as `after` for the next batch; None = done
+
 class ItemCreate(BaseModel):
     citation_key: str = ""
     type: str = "document"

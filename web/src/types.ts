@@ -66,6 +66,20 @@ export interface FetchedPdf {
   url: string;
 }
 
+export interface LibraryPdfFetchCounts {
+  checked: number;
+  attached: number;
+  already_had_pdf: number;
+  not_found: number;
+  no_identifier: number;
+  failed: number;
+}
+
+// One batch of a library-wide fetch; pass next_after back as `after` until it's null.
+export interface LibraryPdfFetch extends LibraryPdfFetchCounts {
+  next_after: string | null;
+}
+
 export interface Attachment {
   id: string;
   filename: string;
