@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.14.0...v1.15.0) (2026-10-20)
+
+
+### Features
+
+* one-time PDF upload links for agents ([f2e4c73](https://github.com/UCSD-E4E/e4e-reference-manager/commit/f2e4c73ca13a182e3fd068cc9866d21687593e5c))
+* one-time PDF upload links for agents ([06bd896](https://github.com/UCSD-E4E/e4e-reference-manager/commit/06bd896231325fe3505ac13b5b4cf330a3046d09))
+
 ## [1.14.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.13.0...v1.14.0) (2026-10-20)
 
 
