@@ -46,7 +46,12 @@ function GroupCard({ group }: { group: Group }) {
               <button
                 className="secondary"
                 type="button"
-                onClick={() => api.removeMember(group.id, m.id).then(load)}
+                onClick={() =>
+                  api
+                    .removeMember(group.id, m.id)
+                    .then(load)
+                    .catch((e) => setErr(String(e)))
+                }
               >
                 Remove
               </button>
