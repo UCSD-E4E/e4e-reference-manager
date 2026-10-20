@@ -105,7 +105,7 @@ async def test_only_pdfs_are_accepted_and_the_link_survives(client, library, dat
 
 
 async def test_size_cap(client, library, monkeypatch):
-    monkeypatch.setattr("app.routers.uploads.MAX_UPLOAD_BYTES", 100)
+    monkeypatch.setattr("app.upload_limits.MAX_PDF_BYTES", 100)
     link = await _link(client, await _item(client, library))
     assert (await _upload(client, link["url"], _pdf() + b"x" * 200)).status_code == 413
 

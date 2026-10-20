@@ -4,6 +4,8 @@ For items with a DOI we hit Crossref; arXiv IDs hit the arXiv API; bare metadata
 back to a Crossref title/author search. The registrar's title is compared to the item's
 to catch fabricated DOIs that happen to resolve to a *different* real paper. All HTTP
 is monkeypatched in tests."""
+import pytest
+
 import app.validation as v
 from app.validation import (
     normalize_title,
@@ -189,3 +191,34 @@ async def test_validate_library_batch_returns_summary(client, library, monkeypat
     assert s["metadata_mismatch"] == 1
     assert s["not_found"] == 1
     assert s["unverifiable"] == 1
+
+
+# ---------- DOIs written as URLs or with URL-special characters ----------
+
+
+@pytest.mark.parametrize(
+    "written", ["https://doi.org/10.1/X", "http://dx.doi.org/10.1/x", " 10.1/X ", "doi:10.1/x"]
+)
+async def test_doi_written_as_a_url_is_looked_up_by_the_bare_doi(monkeypatch, written):
+    _stub_crossref(monkeypatch, {"10.1/x": {"title": "Reef Paper", "DOI": "10.1/x"}})
+    out = await v.validate_item_csl({"DOI": written, "title": "Reef Paper"})
+    assert out["status"] == "verified"
+
+
+async def test_crossref_lookup_quotes_the_doi_in_the_path(monkeypatch):
+    import httpx
+
+    seen = []
+
+    def handler(request):
+        seen.append(request.url)
+        return httpx.Response(200, json={"message": {"title": ["T"], "DOI": "10.1/a#b?c"}})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        v.httpx, "AsyncClient", lambda **k: real(transport=httpx.MockTransport(handler), **k)
+    )
+    assert (await v.crossref_lookup("10.1/a#b?c"))["title"] == "T"
+    (url,) = seen
+    assert url.raw_path == b"/works/10.1/a%23b%3Fc"
+    assert not url.query and not url.fragment

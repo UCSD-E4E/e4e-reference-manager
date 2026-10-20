@@ -16,7 +16,8 @@ from ..deps import item_editor, library_access_level, library_editor
 from ..models import _ACCESS_RANK, Attachment, Item, Library, User
 from ..pdf import extract_pdf_text
 from ..schemas import AttachmentOut, AttachmentText, FetchedPdf, LibraryPdfFetch
-from ..storage import download_bytes, presigned_get_url, upload_bytes
+from ..storage import OPAQUE_TYPE, download_bytes, presigned_get_url, upload_bytes
+from ..upload_limits import read_pdf_upload
 
 logger = logging.getLogger("refman")
 
@@ -39,7 +40,10 @@ async def _store_attachment(
     sha256 = hashlib.sha256(data).hexdigest()
     key = f"{item.library_id}/{item.id}/{sha256}"
 
-    await run_in_threadpool(upload_bytes, key, data, content_type)
+    # Object storage serves the object with this type: anything but a PDF is stored as
+    # an opaque download so an uploaded HTML/SVG page can never render from its host.
+    stored_type = content_type if content_type == "application/pdf" else OPAQUE_TYPE
+    await run_in_threadpool(upload_bytes, key, data, stored_type)
 
     text = (
         await run_in_threadpool(extract_pdf_text, data)
@@ -69,15 +73,20 @@ async def upload_attachment(
     item: Item = Depends(item_editor),
     session: AsyncSession = Depends(get_session),
 ):
-    data = await file.read()
+    data = await read_pdf_upload(file)
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
+    # The bytes decide whether it's a PDF, not the client's claim (browsers send
+    # octet-stream for PDFs; a "PDF" may be an HTML page).
+    if data.startswith(b"%PDF"):
+        content_type = "application/pdf"
+    else:
+        claimed = (file.content_type or "").split(";")[0].strip().lower()
+        content_type = (
+            "application/octet-stream" if claimed in ("", "application/pdf") else claimed
+        )
     return await _store_attachment(
-        session,
-        item,
-        data,
-        file.filename or "document.pdf",
-        file.content_type or "application/pdf",
+        session, item, data, file.filename or "document.pdf", content_type
     )
 
 
@@ -216,9 +225,11 @@ async def attachment_url(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Signed URL for the in-app PDF.js viewer (inline)."""
+    """Signed URL for the in-app PDF.js viewer (inline). Anything that isn't a PDF gets
+    a download URL instead: it's never served inline."""
     att = await _owned_attachment(attachment_id, user, session)
-    url = await run_in_threadpool(presigned_get_url, att.storage_key, None)
+    name = None if _is_pdf(att) else att.filename
+    url = await run_in_threadpool(presigned_get_url, att.storage_key, name)
     return {"url": url, "content_type": att.content_type}
 
 

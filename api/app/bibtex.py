@@ -54,14 +54,35 @@ class ParsedEntry:
     raw_bibtex: str
 
 
+def _split_on_and(value: str) -> list[str]:
+    """Split on ' and ' outside braces (`{Barnes and Noble}` is one name)."""
+    names, depth, start = [], 0, 0
+    i = 0
+    while i < len(value):
+        ch = value[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(depth - 1, 0)
+        elif depth == 0 and value.startswith(" and ", i):
+            names.append(value[start:i])
+            start = i = i + len(" and ")
+            continue
+        i += 1
+    names.append(value[start:])
+    return names
+
+
 def _split_authors(value: str) -> list[dict]:
     """Convert a BibTeX 'and'-separated author string to CSL name objects."""
     people = []
-    for raw in value.replace("\n", " ").split(" and "):
+    for raw in _split_on_and(re.sub(r"\s+", " ", value)):
         name = raw.strip()
         if not name:
             continue
-        if "," in name:  # "Family, Given"
+        if re.fullmatch(r"\{[^{}]*\}", name):  # "{World Health Organization}"
+            people.append({"literal": name[1:-1].strip()})
+        elif "," in name:  # "Family, Given"
             family, _, given = name.partition(",")
             people.append({"family": family.strip(), "given": given.strip()})
         else:  # "Given ... Family"
@@ -111,12 +132,21 @@ def _entry_to_csl(entry: dict) -> tuple[str, dict]:
         csl["URL"] = url
     if abstract := entry.get("abstract"):
         csl["abstract"] = abstract
-    if year := entry.get("year"):
-        try:
-            csl["issued"] = {"date-parts": [[int(year)]]}
-        except ValueError:
-            pass
+    if (year := _valid_year(entry.get("year"))) is not None:
+        csl["issued"] = {"date-parts": [[year]]}
     return csl_type, csl
+
+
+def _valid_year(value: object) -> int | None:
+    """An int year in 1..9999, else None (a typo like 99999999999 would overflow the
+    year column and fail the whole import)."""
+    if isinstance(value, bool):
+        return None
+    try:
+        year = int(value) if isinstance(value, (int, float)) else int(str(value).strip())
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return year if 1 <= year <= 9999 else None
 
 
 def _single_entry_bibtex(entry: dict) -> str:
@@ -128,6 +158,7 @@ def _single_entry_bibtex(entry: dict) -> str:
 
 
 def parse_bibtex(text: str) -> list[ParsedEntry]:
+    text = text.replace("\x00", "")  # Postgres text can't hold NUL
     parser = BibTexParser(common_strings=True)
     parser.ignore_nonstandard_types = False
     db = bibtexparser.loads(text, parser=parser)
@@ -145,41 +176,81 @@ def parse_bibtex(text: str) -> list[ParsedEntry]:
     return results
 
 
-def _csl_names_to_bibtex(names: list[dict]) -> str:
+def _balance_braces(value: str) -> str:
+    """Drop unmatched braces: an unbalanced value would swallow the entries after it."""
+    out: list[str] = []
+    opened: list[int] = []  # positions in `out` of still-open braces
+    for ch in value:
+        if ch == "{":
+            opened.append(len(out))
+        elif ch == "}":
+            if not opened:
+                continue
+            opened.pop()
+        out.append(ch)
+    for pos in reversed(opened):
+        del out[pos]
+    return "".join(out)
+
+
+_LATEX_SPECIAL = re.compile(r"(?<!\\)([&%$#_])")
+
+
+def _bib_text(value: object) -> str:
+    """A generated field value: LaTeX specials escaped, braces balanced."""
+    return _balance_braces(_LATEX_SPECIAL.sub(r"\\\1", str(value)))
+
+
+def _bib_verbatim(value: object) -> str:
+    """url/doi are read verbatim by biblatex: no escaping, but braces still balanced."""
+    return _balance_braces(str(value))
+
+
+def _bib_key(key: str) -> str:
+    """A citation key BibTeX can parse (no spaces, braces, commas, quotes...)."""
+    return re.sub(r"[\s{}(),\"#%'=~\\]", "", key)
+
+
+def _csl_names_to_bibtex(names: list) -> str:
     parts = []
     for n in names:
-        family = n.get("family", "")
-        given = n.get("given", "")
+        if not isinstance(n, dict):
+            continue
+        if literal := n.get("literal"):  # an organisation: braced so it isn't split
+            parts.append("{" + _bib_text(literal) + "}")
+            continue
+        family = _bib_text(n.get("family") or "")
+        given = _bib_text(n.get("given") or "")
         parts.append(f"{family}, {given}".strip(", ") if given else family)
     return " and ".join(p for p in parts if p)
 
 
 def csl_to_bibtex_entry(citation_key: str, csl: dict) -> dict:
     bib_type = _CSL_TO_BIBTEX_TYPE.get(csl.get("type", "document"), "misc")
-    entry: dict = {"ENTRYTYPE": bib_type, "ID": citation_key or csl.get("id") or "ref"}
-    if "title" in csl:
-        entry["title"] = csl["title"]
-    if csl.get("author"):
-        entry["author"] = _csl_names_to_bibtex(csl["author"])
-    if csl.get("editor"):
-        entry["editor"] = _csl_names_to_bibtex(csl["editor"])
-    if "container-title" in csl:
-        key = "journal" if bib_type == "article" else "booktitle"
-        entry[key] = csl["container-title"]
+    key = _bib_key(str(citation_key or csl.get("id") or "")) or "ref"
+    entry: dict = {"ENTRYTYPE": bib_type, "ID": key}
+    if csl.get("title"):
+        entry["title"] = _bib_text(csl["title"])
+    for role in ("author", "editor"):
+        if isinstance(csl.get(role), list) and (names := _csl_names_to_bibtex(csl[role])):
+            entry[role] = names
+    if csl.get("container-title"):
+        field = "journal" if bib_type == "article" else "booktitle"
+        entry[field] = _bib_text(csl["container-title"])
     for csl_key, bib_key in (
         ("publisher", "publisher"),
         ("volume", "volume"),
         ("issue", "number"),
         ("page", "pages"),
-        ("DOI", "doi"),
-        ("URL", "url"),
         ("abstract", "abstract"),
     ):
         if csl.get(csl_key):
-            entry[bib_key] = str(csl[csl_key])
-    issued = csl.get("issued", {}).get("date-parts", [[None]])
-    if issued and issued[0] and issued[0][0]:
-        entry["year"] = str(issued[0][0])
+            entry[bib_key] = _bib_text(csl[csl_key])
+    for csl_key, bib_key in (("DOI", "doi"), ("URL", "url")):
+        if csl.get(csl_key):
+            entry[bib_key] = _bib_verbatim(csl[csl_key])
+    if (year := year_from_csl(csl)) is not None:
+        entry["year"] = str(year)
     return entry
 
 
@@ -207,10 +278,9 @@ def build_bibtex(items: list[tuple[str, dict, str | None]]) -> str:
 
 
 def year_from_csl(csl: dict) -> int | None:
-    parts = csl.get("issued", {}).get("date-parts", [[None]])
-    if parts and parts[0] and parts[0][0]:
-        try:
-            return int(parts[0][0])
-        except (ValueError, TypeError):
-            return None
+    """The issued year, if it's a plausible one (1..9999; fits the year column)."""
+    issued = csl.get("issued")
+    parts = issued.get("date-parts") if isinstance(issued, dict) else None
+    if isinstance(parts, list) and parts and isinstance(parts[0], list) and parts[0]:
+        return _valid_year(parts[0][0])
     return None
