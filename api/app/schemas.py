@@ -94,7 +94,7 @@ class LibraryPdfFetch(BaseModel):
     attached: int
     already_had_pdf: int
     not_found: int  # had a DOI/arXiv id, but no open-access copy
-    no_identifier: int  # nothing to look up
+    no_identifier: int  # nothing to look up: no DOI, arXiv id, or usable http(s) URL
     failed: int  # storage/extraction error; safe to retry
     next_after: uuid.UUID | None  # pass back as `after` for the next batch; None = done
 
