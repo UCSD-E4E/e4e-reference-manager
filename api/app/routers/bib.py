@@ -185,11 +185,24 @@ async def import_pasted_bibtex(
 
 
 def _bib_response(items: list[Item], filename: str) -> PlainTextResponse:
+    import re
+    import unicodedata
+    from urllib.parse import quote
+
     text = build_bibtex([(i.citation_key, i.csl_json, i.raw_bibtex) for i in items])
+    # Headers are latin-1 and the name is user-chosen: send it RFC 5987-encoded, with a
+    # plain-ASCII fallback (accents stripped; quotes, backslashes, controls replaced).
+    ascii_name = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode()
+    ascii_name = re.sub(r'["\\\x00-\x1f\x7f]', "_", ascii_name).strip()
+    if not re.search(r"[A-Za-z0-9]", ascii_name.removesuffix(".bib")):
+        ascii_name = "export.bib"
+    disposition = (
+        f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename, safe="")}'
+    )
     return PlainTextResponse(
         text,
         media_type="application/x-bibtex",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
 
 

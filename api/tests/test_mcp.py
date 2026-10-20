@@ -343,6 +343,17 @@ async def test_not_running_is_503(mcp_app, db, alice):
     assert r.status_code == 503
 
 
+async def test_non_utf8_header_is_not_a_500(mcp_app):
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as http:
+        r = await http.post(
+            "/mcp",
+            headers={"Authorization": "Bearer refman_nope", "X-Junk": b"caf\xe9"},
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        )
+    assert r.status_code == 401
+
+
 async def test_tool_annotations_are_honest(agent):
     tools = {t.name: t.annotations for t in await agent.list_tools()}
     read_only = {n for n, a in tools.items() if a.read_only_hint}

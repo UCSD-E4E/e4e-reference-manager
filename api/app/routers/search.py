@@ -75,20 +75,30 @@ async def search_library(
     return ItemList(total=len(items), items=items)
 
 
+REINDEX_COMMIT_EVERY = 25
+
+
 @router.post("/libraries/{library_id}/reindex")
 async def reindex_library(
     lib: Library = Depends(library_editor),
     session: AsyncSession = Depends(get_session),
+    force: bool = Query(False, description="Re-embed every item, not just those missing one"),
 ):
-    """(Re)compute embeddings for every item in the library. Use after a bulk import or
-    once Ollama becomes available. Items whose embedding can't be produced are skipped."""
-    rows = await session.execute(select(Item).where(Item.library_id == lib.id))
-    items = list(rows.scalars().all())
+    """Compute embeddings for the library's items that have none (e.g. imported while
+    Ollama was down); `force` recomputes all of them (e.g. after changing the model).
+    Items whose embedding can't be produced are skipped. Progress is committed in
+    batches, so an interrupted run keeps what it did."""
+    stmt = select(Item).where(Item.library_id == lib.id)
+    if not force:
+        stmt = stmt.where(Item.embedding.is_(None))
+    items = list((await session.execute(stmt.order_by(Item.id))).scalars().all())
     embedded = 0
-    for item in items:
+    for n, item in enumerate(items, 1):
         vec = await embeddings.embed_item_csl(item.csl_json)
         if vec is not None:
             item.embedding = vec
             embedded += 1
+        if n % REINDEX_COMMIT_EVERY == 0:
+            await session.commit()
     await session.commit()
     return {"items": len(items), "embedded": embedded}
