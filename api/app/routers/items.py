@@ -71,6 +71,21 @@ def apply_changes(
     return changed
 
 
+async def lock_item(session: AsyncSession, item: Item) -> None:
+    """Re-read `item` under a row lock (SELECT ... FOR UPDATE) held until the transaction
+    ends, so a read-check-write on it can't interleave with another writer's: a concurrent
+    writer waits, then sees this one's committed version."""
+    await session.refresh(item, with_for_update=True)
+
+
+def _check_version(item: Item, version: int) -> None:
+    if version != item.version:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Version conflict: item is at version {item.version}, you sent {version}",
+        )
+
+
 @router.get("/libraries/{library_id}/items", response_model=ItemList)
 async def list_items(
     lib: Library = Depends(library_viewer),
@@ -132,20 +147,20 @@ async def update_item(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    if payload.version != item.version:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Version conflict: item is at version {item.version}, you sent {payload.version}",
-        )
-    before = item_snapshot(item)
+    _check_version(item, payload.version)  # fail fast, before the embedding call
     csl_changed = payload.csl_json is not None and payload.csl_json != (item.csl_json or {})
+    # Embed before taking the row lock, so a slow model never holds it.
+    vec = await embeddings.embed_item_csl(payload.csl_json) if csl_changed else None
+    # The check above read the row unlocked: two edits from the same version could both
+    # pass it. Re-check under the lock so exactly one of them wins; the other gets 409.
+    await lock_item(session, item)
+    _check_version(item, payload.version)
+    before = item_snapshot(item)
     apply_changes(
         item, csl=payload.csl_json, citation_key=payload.citation_key, type=payload.type
     )
-    if csl_changed:
-        vec = await embeddings.embed_item_csl(payload.csl_json)
-        if vec is not None:
-            item.embedding = vec
+    if csl_changed and vec is not None:
+        item.embedding = vec
     item.version += 1
     record(
         session,
@@ -201,6 +216,9 @@ async def restore_item(
     if not snapshot:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "That event has no restorable snapshot")
 
+    # Under the row lock, a concurrent edit either lands first (and this restore bumps the
+    # version past it, recording it as `before`) or waits and then gets a 409.
+    await lock_item(session, item)
     before = item_snapshot(item)
     apply_changes(
         item,

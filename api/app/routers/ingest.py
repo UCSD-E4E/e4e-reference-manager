@@ -24,7 +24,7 @@ from ..schemas import (
     MetadataProposal,
 )
 from ..storage import download_bytes, upload_bytes
-from .items import _denormalize, apply_changes
+from .items import _denormalize, apply_changes, lock_item
 
 router = APIRouter(tags=["ingest"])
 
@@ -104,6 +104,9 @@ async def extract_metadata(
     if not apply:
         return MetadataProposal(csl_json=proposed, applied=False, item=None)
 
+    # GROBID took a while: merge into the item as it is now, not as it was read, and
+    # bump its version atomically (see items.lock_item).
+    await lock_item(session, item)
     before = item_snapshot(item)
     merged = dict(item.csl_json or {})
     for k, v in proposed.items():
