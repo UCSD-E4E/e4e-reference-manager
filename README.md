@@ -266,15 +266,19 @@ The **API tokens** page shows this command with your new token filled in.
 | `import_bibtex` | Add BibTeX entries (duplicates are skipped; entries are validated) |
 | `add_note`, `create_collection`, `add_to_collection` | Annotate and organise |
 | `update_reference` | Edit metadata fields (partial, version-checked), then re-validate |
+| `delete_reference`, `list_trash`, `restore_reference` | Move a reference to the trash, see the trash, undo |
 | `validate_reference` | Re-check a reference against Crossref/arXiv; replaces its stored verdict |
 | `get_pdf_text`, `get_pdf_url` | Read an attached PDF's text (paged), or get a short-lived download link |
 | `find_pdf`, `find_library_pdfs` | Find and attach legal open-access PDFs (Unpaywall, arXiv) for a reference or a library |
 
 - Every tool calls the REST API in-process with the caller's token. Permissions,
   validation and the activity history are the same as in the web app.
-- Tools add, organise and edit, but never delete. Edits need edit access, are recorded in
-  the reference's history (undo them from the web app), and `update_reference` refuses
-  to overwrite a newer version than the one the agent read.
+- Agents can't destroy data. Metadata edits need edit access, are recorded in the
+  reference's history (undo them from the web app), and `update_reference` refuses to
+  overwrite a newer version than the one the agent read. `delete_reference` only moves a
+  reference to the trash for 30 days. There is no permanent-delete tool; emptying the
+  trash stays a human action in the web app. (`validate_reference` replaces the stored
+  verdict without a history entry; re-validating recomputes it.)
 - The server is stateless streamable HTTP with JSON responses (`app/mcp_server.py`).
   Requests without a valid Bearer token get a 401, even with `REFMAN_DEV_AUTH`.
 - Local development: create a token in the local web app, then point the client at

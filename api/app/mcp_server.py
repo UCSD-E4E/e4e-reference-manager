@@ -6,9 +6,11 @@ HTTP, stateless, JSON responses. Clients authenticate with a personal API token
 
 Each tool is a thin wrapper over the REST API, called in-process with the caller's own
 Authorization header, so tools get exactly the REST endpoints' permissions, validation
-and audit trail, and no logic is duplicated here. Tools add, organise and edit, but
-never delete. Edits (update_reference, and validate_reference's stored verdict) need
-edit access and are recorded in the reference's history, so they can be undone.
+and audit trail, and no logic is duplicated here. Agents can't destroy data: metadata
+edits (update_reference) are recorded in the reference's history and can be undone,
+delete_reference only moves a reference to its library's trash for 30 days, and there
+is no permanent-delete tool. (validate_reference replaces the stored verdict without a
+history entry; a verdict can always be recomputed.)
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import aclosing, asynccontextmanager
+from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
 
 import httpx
@@ -32,6 +35,7 @@ from starlette.types import Receive, Scope, Send
 from .auth import authenticate_token
 from .config import get_settings
 from .db import get_session
+from .trash import TRASH_RETENTION
 
 mcp = MCPServer(
     name="e4e Reference Manager",
@@ -44,7 +48,9 @@ mcp = MCPServer(
         "re-checks it against Crossref/arXiv. PDFs: get_reference lists a reference's "
         "attachments; read one with get_pdf_text, or fetch a missing open-access copy with "
         "find_pdf. To fix metadata, call get_reference, then update_reference with its "
-        "`version`; edits are re-validated and can be undone from the web app."
+        "`version`; edits are re-validated and can be undone from the web app. "
+        "delete_reference moves a reference to the trash (restore_reference undoes it "
+        "for 30 days); confirm with the user before deleting."
     ),
 )
 
@@ -68,6 +74,13 @@ _FETCH_EXTERNAL = ToolAnnotations(
 # then re-checks it against Crossref/arXiv.
 _UPDATE = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True
+)
+# Moves a reference to the trash: reversible for 30 days, but clients should confirm.
+_TRASH = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False
+)
+_RESTORE = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False
 )
 
 Limit = Annotated[int, Field(ge=1, le=200, description="Results per page (1-200)")]
@@ -426,6 +439,47 @@ async def update_reference(
         out["validation"] = check.json()["status"]
         out["validation_details"] = check.json()
     return out
+
+
+# ── Tools: deleting (to the trash; never permanently) ──────────────────────────────────
+
+
+@mcp.tool(annotations=_TRASH)
+async def delete_reference(ctx: Context, reference_id: uuid.UUID) -> dict:
+    """Delete a reference by moving it to its library's trash. It keeps its notes, PDFs
+    and collections and can be restored (restore_reference, or the web app) for 30 days,
+    after which it is purged. There is no way to delete permanently from here."""
+    await _request(ctx, "DELETE", f"/items/{reference_id}")
+    restorable_until = datetime.now(timezone.utc) + TRASH_RETENTION
+    return {"reference_id": str(reference_id), "restorable_until": restorable_until.isoformat()}
+
+
+@mcp.tool(annotations=_READ)
+async def list_trash(ctx: Context, library_id: uuid.UUID) -> dict:
+    """List a library's trash: references deleted in the last 30 days, newest first,
+    with who deleted them and when each will be purged."""
+    entries = await _json(ctx, "GET", f"/libraries/{library_id}/trash")
+    return {
+        "trash": [
+            {
+                **_summary(e["item"]),
+                "deleted_at": e["deleted_at"],
+                "deleted_by": (e["deleted_by"] or {}).get("email"),
+                "purge_at": e["purge_at"],
+            }
+            for e in entries
+        ]
+    }
+
+
+@mcp.tool(annotations=_RESTORE)
+async def restore_reference(
+    ctx: Context, library_id: uuid.UUID, reference_id: uuid.UUID
+) -> dict:
+    """Restore a reference from its library's trash, with its notes, PDFs and
+    collections."""
+    item = await _json(ctx, "POST", f"/libraries/{library_id}/trash/{reference_id}/restore")
+    return {**_summary(item), "version": item["version"]}
 
 
 # ── HTTP endpoint ───────────────────────────────────────────────────────────────────────

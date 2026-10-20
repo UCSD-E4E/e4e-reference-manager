@@ -107,8 +107,9 @@ export default function Tokens() {
         <p className="muted">
           Claude Code and other MCP clients can search, add, annotate and validate references,
           and read their PDFs, through the MCP server at <code>{MCP_URL}</code>, using a token
-          from this page. Agents can edit metadata (recorded in each reference's history, so
-          it can be undone) but can't delete anything.
+          from this page. Agents can edit metadata (recorded in each reference's history) and
+          move references to the trash (restorable for 30 days), but can't permanently
+          delete anything.
         </p>
         {created ? (
           <>
