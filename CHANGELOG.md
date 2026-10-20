@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.7.1...v1.8.0) (2026-10-20)
+
+
+### Features
+
+* personal API tokens for scripts and agents ([b382605](https://github.com/UCSD-E4E/e4e-reference-manager/commit/b38260517b6ccf2900bccc325a7836c96e3e6e5f))
+* personal API tokens for scripts and agents ([5aac858](https://github.com/UCSD-E4E/e4e-reference-manager/commit/5aac8588376c10d08c323e898072b7264062356d))
+
 ## [1.7.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.7.0...v1.7.1) (2026-10-20)
 
 
