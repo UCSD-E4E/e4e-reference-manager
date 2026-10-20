@@ -56,6 +56,23 @@ function redirectToLogin(): boolean {
   return true;
 }
 
+// How many on-screen forms hold unsaved edits; while any do, a 401 never navigates away.
+let redirectHolds = 0;
+
+/** Keep a logged-out 401 from redirecting to login (and discarding the page) while unsaved
+ * edits are on screen. Call when the form opens; the returned function releases the hold,
+ * so `useEffect(() => holdLoginRedirect(), [])` covers a component's lifetime. */
+export function holdLoginRedirect(): () => void {
+  redirectHolds++;
+  let released = false;
+  return () => {
+    if (!released) {
+      released = true;
+      redirectHolds--;
+    }
+  };
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: "include",
@@ -65,10 +82,12 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   // Only reads redirect: navigating away on a failed write (POST/PATCH/…) would throw
-  // away whatever the user was saving. Writes surface the 401 so the form keeps its data.
+  // away whatever the user was saving. Writes surface the 401 so the form keeps its data,
+  // and so do reads while a form holds unsaved edits (a page reload fired mid-edit).
   // A redirecting read never settles, so the page doesn't flash the error meanwhile.
   const isRead = ["GET", "HEAD"].includes((init?.method ?? "GET").toUpperCase());
-  if (res.status === 401 && isRead && redirectToLogin()) return new Promise<T>(() => {});
+  const mayRedirect = isRead && redirectHolds === 0;
+  if (res.status === 401 && mayRedirect && redirectToLogin()) return new Promise<T>(() => {});
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -76,7 +95,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* ignore */
     }
-    if (res.status === 401 && !isRead) {
+    if (res.status === 401 && !mayRedirect) {
       detail += " — your session expired. Sign in again in a new tab, then retry; your changes are still here.";
     }
     throw new Error(`${res.status}: ${detail}`);

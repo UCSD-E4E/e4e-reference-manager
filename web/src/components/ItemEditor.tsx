@@ -1,5 +1,5 @@
-import { FormEvent, useState } from "react";
-import { api } from "../api";
+import { FormEvent, useEffect, useState } from "react";
+import { api, holdLoginRedirect } from "../api";
 import { CSL_TYPES } from "../csl";
 import type { Item } from "../types";
 
@@ -36,8 +36,18 @@ const FIELDS: [key: string, label: string][] = [
   ["URL", "URL"],
 ];
 
+const CONFLICT =
+  "This reference changed while you were editing (someone else's edit, or a restore or " +
+  "metadata fill on this page). Saving would overwrite that, so it's blocked: copy " +
+  "anything you need, then cancel and edit again.";
+
 /** Edit an item's metadata. Fields the form doesn't show are carried over untouched,
- * and authors/year are only rewritten if changed, so saving never loses detail. */
+ * and authors/year are only rewritten if changed, so saving never loses detail.
+ *
+ * The form edits the item as it was when editing began (`base`): the page may reload
+ * `item` underneath (after a restore, PDF upload, metadata fill…), and saving the form
+ * against that newer version would silently overwrite it. Saving sends base's version,
+ * so the API answers 409 instead, and a newer `item` prop blocks saving up front. */
 export default function ItemEditor({
   item,
   onSaved,
@@ -47,19 +57,25 @@ export default function ItemEditor({
   onSaved: (item: Item) => void;
   onCancel: () => void;
 }) {
-  const csl = item.csl_json as Csl;
+  const [base] = useState(item);
+  const csl = base.csl_json as Csl;
   const initialAuthors = namesToText(csl.author);
-  const [key, setKey] = useState(item.citation_key);
-  const [type, setType] = useState(item.type);
+  const initialYear = base.year ? String(base.year) : "";
+  const [key, setKey] = useState(base.citation_key);
+  const [type, setType] = useState(base.type);
   const [title, setTitle] = useState(str(csl.title));
   const [authors, setAuthors] = useState(initialAuthors);
-  const [year, setYear] = useState(item.year ? String(item.year) : "");
+  const [year, setYear] = useState(initialYear);
   const [abstract, setAbstract] = useState(str(csl.abstract));
   const [fields, setFields] = useState<Record<string, string>>(
     Object.fromEntries(FIELDS.map(([k]) => [k, str(csl[k])])),
   );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const stale = item.id === base.id && item.version !== base.version;
+
+  // An expired session must not navigate away from unsaved edits (see api.ts).
+  useEffect(() => holdLoginRedirect(), []);
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
@@ -84,7 +100,7 @@ export default function ItemEditor({
       if (names.length) next.author = names;
       else delete next.author;
     }
-    if (y !== (item.year ? String(item.year) : "")) {
+    if (y !== initialYear) {
       if (y) next.issued = { "date-parts": [[Number(y)]] };
       else delete next.issued;
     }
@@ -92,20 +108,15 @@ export default function ItemEditor({
     setSaving(true);
     setErr("");
     try {
-      onSaved(await api.updateItem(item.id, item.version, next, { citation_key: key.trim(), type }));
+      onSaved(await api.updateItem(base.id, base.version, next, { citation_key: key.trim(), type }));
     } catch (e) {
       const msg = String(e);
-      setErr(
-        msg.includes("409")
-          ? "Someone else changed this reference while you were editing. Copy anything you " +
-              "need, then cancel and reload to see their version."
-          : msg,
-      );
+      setErr(msg.includes("409") ? CONFLICT : msg);
       setSaving(false);
     }
   };
 
-  const types = CSL_TYPES.includes(item.type) ? CSL_TYPES : [item.type, ...CSL_TYPES];
+  const types = CSL_TYPES.includes(base.type) ? CSL_TYPES : [base.type, ...CSL_TYPES];
 
   return (
     <form className="card editor" onSubmit={save}>
@@ -151,9 +162,9 @@ export default function ItemEditor({
         Abstract
         <textarea rows={5} value={abstract} onChange={(e) => setAbstract(e.target.value)} />
       </label>
-      {err && <p className="error">{err}</p>}
+      {stale ? <p className="error">{CONFLICT}</p> : err && <p className="error">{err}</p>}
       <div className="row">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving || stale}>
           {saving ? "Saving…" : "Save"}
         </button>
         <button className="secondary" type="button" onClick={onCancel}>
