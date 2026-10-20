@@ -1,6 +1,7 @@
 """FastAPI application entrypoint."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import __version__
 from .auth import register_oidc
 from .config import Settings, get_settings
+from .db import SessionLocal
 from .mcp_server import mcp_endpoint, mount_mcp
 from .routers import (
     annotations,
@@ -28,9 +30,11 @@ from .routers import (
     ml,
     notes,
     search,
+    trash,
     validate,
 )
 from .storage import ensure_bucket
+from .trash import purge_trash_forever
 
 logger = logging.getLogger("refman")
 settings = get_settings()
@@ -46,8 +50,13 @@ async def lifespan(app: FastAPI):
         logger.info("Authentik OIDC registered")
     elif not settings.dev_auth:
         logger.warning("OIDC not configured and dev_auth is off — logins will fail")
-    async with mcp_endpoint.running():
-        yield
+    # Purge references that have sat in a library's trash past the retention period.
+    purger = asyncio.create_task(purge_trash_forever(SessionLocal))
+    try:
+        async with mcp_endpoint.running():
+            yield
+    finally:
+        purger.cancel()
 
 
 def session_cookie_https_only(s: Settings) -> bool:
@@ -86,4 +95,5 @@ app.include_router(notes.router)
 app.include_router(ingest.router)
 app.include_router(ml.router)
 app.include_router(validate.router)
+app.include_router(trash.router)
 mount_mcp(app)

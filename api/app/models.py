@@ -228,6 +228,14 @@ class Item(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Trash: set when the item is deleted. A trashed item is hidden from every query (see
+    # app.trash) until restored, and purged once the retention period has passed.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
+    )
 
     attachments: Mapped[list["Attachment"]] = relationship(
         back_populates="item", cascade="all, delete-orphan", lazy="selectin"

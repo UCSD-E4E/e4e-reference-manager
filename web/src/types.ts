@@ -130,6 +130,13 @@ export interface PdfValidationResult {
   references: RefValidation[];
 }
 
+export interface TrashedItem {
+  item: Item;
+  deleted_at: string;
+  deleted_by: User | null;
+  purge_at: string; // when it is deleted for good
+}
+
 export interface Item {
   id: string;
   library_id: string;
