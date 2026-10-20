@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.12.0...v1.13.0) (2026-10-20)
+
+
+### Features
+
+* agents can delete references (to the trash) and restore them ([766a0f2](https://github.com/UCSD-E4E/e4e-reference-manager/commit/766a0f2fadf1fed95c69d9f5c3f7e28839fbbae6))
+* agents can delete references (to the trash) and restore them ([80380ba](https://github.com/UCSD-E4E/e4e-reference-manager/commit/80380bad1a46d1951cad837cefb13c7d127655f9))
+
 ## [1.12.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.11.2...v1.12.0) (2026-10-20)
 
 
