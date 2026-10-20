@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.9.0...v1.10.0) (2026-10-20)
+
+
+### Features
+
+* PDF tools for the MCP server ([d2b396e](https://github.com/UCSD-E4E/e4e-reference-manager/commit/d2b396e4837bad72d768241dfed98d930396ae9f))
+* PDF tools for the MCP server ([e092b63](https://github.com/UCSD-E4E/e4e-reference-manager/commit/e092b63cd503f857e1f709aabe618a8a411c1825))
+
 ## [1.9.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.8.0...v1.9.0) (2026-10-20)
 
 
