@@ -105,6 +105,26 @@ class ApiToken(Base):
     user: Mapped["User"] = relationship(lazy="joined")
 
 
+class PdfUploadLink(Base):
+    """A one-time, short-lived URL that accepts a single PDF upload for an item, so an
+    agent can `curl` a local file without holding a session or API token. Only the
+    SHA-256 of the URL's secret is stored."""
+
+    __tablename__ = "pdf_upload_link"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("item.id", ondelete="CASCADE"), index=True
+    )
+    created_by_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_account.id", ondelete="CASCADE")
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Group(Base):
     """A team. Membership is typically sourced from Authentik group claims."""
 

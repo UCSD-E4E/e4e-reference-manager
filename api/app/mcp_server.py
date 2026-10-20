@@ -47,8 +47,9 @@ mcp = MCPServer(
         "(verified / metadata_mismatch / not_found / unverifiable); validate_reference "
         "re-checks it against Crossref/arXiv. PDFs: get_reference lists a reference's "
         "attachments; read one with get_pdf_text, or fetch a missing open-access copy with "
-        "find_pdf. To fix metadata, call get_reference, then update_reference with its "
-        "`version`; edits are re-validated and can be undone from the web app. "
+        "find_pdf; for a PDF the user has locally, create_pdf_upload gives a one-time "
+        "link to curl it to. To fix metadata, call get_reference, then update_reference "
+        "with its `version`; edits are re-validated and can be undone from the web app. "
         "delete_reference moves a reference to the trash (restore_reference undoes it "
         "for 30 days); confirm with the user before deleting."
     ),
@@ -364,6 +365,16 @@ async def get_pdf_url(ctx: Context, attachment_id: uuid.UUID) -> dict:
     """A short-lived signed URL to download a PDF attached to a reference."""
     out = await _json(ctx, "GET", f"/attachments/{attachment_id}/url")
     return {**out, "expires_in_seconds": get_settings().presign_expiry_seconds}
+
+
+@mcp.tool(annotations=_ADD)
+async def create_pdf_upload(ctx: Context, reference_id: uuid.UUID) -> dict:
+    """Get a one-time link to attach a PDF you have locally (e.g. a paywalled paper the
+    user downloaded) to a reference. Run the returned `curl` command with `paper.pdf`
+    replaced by the file's path: the file goes straight to the server, not through
+    this conversation. The link accepts one PDF (up to 50 MB) and expires in 15
+    minutes. For open-access papers, try find_pdf first."""
+    return await _json(ctx, "POST", f"/items/{reference_id}/upload-links")
 
 
 @mcp.tool(annotations=_FETCH_EXTERNAL)

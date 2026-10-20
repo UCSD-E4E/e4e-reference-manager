@@ -74,6 +74,12 @@ class AttachmentText(BaseModel):
     next_offset: int | None  # pass back as `offset` for the next page; None = done
 
 
+class PdfUploadLinkOut(BaseModel):
+    url: str  # POST one PDF here as multipart field `file`; works once
+    expires_at: datetime
+    curl: str  # ready-to-run upload command (replace paper.pdf with the file's path)
+
+
 class FetchedPdf(BaseModel):
     attachment: AttachmentOut
     source: str  # unpaywall | arxiv | url
