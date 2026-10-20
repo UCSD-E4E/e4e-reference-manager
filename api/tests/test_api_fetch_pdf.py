@@ -252,3 +252,23 @@ async def test_fetch_pdfs_requires_edit_access(client, make_user, login, net):
     login(bob)
     r = await client.post(f"/libraries/{lib}/fetch-pdfs")
     assert r.status_code == 403
+
+
+async def test_fetch_pdfs_failure_in_a_full_batch_still_returns_a_cursor(
+    client, library, net, monkeypatch
+):
+    # A full batch (checked == limit) is the case that has to compute next_after, after
+    # the failed item's rollback has expired every loaded object.
+    for n in (1, 2):
+        net[f"https://arxiv.org/pdf/2101.0000{n}"] = (200, _pdf(f"paper {n}"), {})
+        await _add(client, library, URL=f"https://arxiv.org/abs/2101.0000{n}")
+
+    def broken_upload(*a, **k):
+        raise RuntimeError("object storage hiccup")
+
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", broken_upload)
+    r = await client.post(f"/libraries/{library}/fetch-pdfs", params={"limit": 2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["failed"] == 2 and body["checked"] == 2
+    assert body["next_after"] is not None
