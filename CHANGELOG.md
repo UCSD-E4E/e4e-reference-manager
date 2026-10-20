@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.8.0...v1.9.0) (2026-10-20)
+
+
+### Features
+
+* MCP server for AI agents at /api/mcp ([c20c7cb](https://github.com/UCSD-E4E/e4e-reference-manager/commit/c20c7cbb56dcf9fa0214fabef002a80a8d81fa4b))
+* MCP server for AI agents at /api/mcp ([ef0086e](https://github.com/UCSD-E4E/e4e-reference-manager/commit/ef0086e37f940eb056569d8de7ab358c97110216))
+
+
+### Bug Fixes
+
+* harden MCP server after review ([baf6e40](https://github.com/UCSD-E4E/e4e-reference-manager/commit/baf6e407f57bc30e2131d61f09cca9f58c48171d))
+
 ## [1.8.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.7.1...v1.8.0) (2026-10-20)
 
 
