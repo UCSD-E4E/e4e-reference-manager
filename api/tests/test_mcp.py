@@ -38,6 +38,9 @@ EXPECTED_TOOLS = {
     "find_pdf",
     "find_library_pdfs",
     "update_reference",
+    "delete_reference",
+    "list_trash",
+    "restore_reference",
 }
 
 ATTENTION = (
@@ -352,9 +355,10 @@ async def test_tool_annotations_are_honest(agent):
         "list_collection_references",
         "get_pdf_text",
         "get_pdf_url",
+        "list_trash",
     }
     # These overwrite stored data (metadata; the validation verdict): updates, not adds.
-    updates = {"update_reference", "validate_reference"}
+    updates = {"update_reference", "validate_reference", "delete_reference"}
     assert {n for n, a in tools.items() if a.destructive_hint} == updates
 
 
@@ -567,3 +571,50 @@ async def test_update_is_recorded_in_history(agent, db, alice, registrars):
         )
     ).scalars().all()
     assert "update" in ops
+
+
+# ── Deleting (to the trash) ─────────────────────────────────────────────────────────────
+
+
+async def test_delete_reference_moves_it_to_the_trash(agent, db, alice, registrars):
+    lib_id, ref = await _imported(agent, db, alice)
+    out = await _call(agent, "delete_reference", reference_id=ref["id"])
+    assert out["reference_id"] == ref["id"]
+    restorable = datetime.fromisoformat(out["restorable_until"])
+    assert abs(restorable - (datetime.now(timezone.utc) + timedelta(days=30))) < timedelta(
+        minutes=1
+    )
+    assert (await _call(agent, "list_references", library_id=lib_id))["total"] == 0
+    assert "404" in await _call_error(agent, "get_reference", reference_id=ref["id"])
+
+    trash = await _call(agent, "list_trash", library_id=lib_id)
+    [entry] = trash["trash"]
+    assert entry["id"] == ref["id"]
+    assert entry["title"] == "Attention Is All You Need"
+    assert entry["deleted_by"] == "alice@e4e.local"
+
+
+async def test_restore_reference_undoes_a_delete(agent, db, alice, registrars):
+    lib_id, ref = await _imported(agent, db, alice)
+    await _call(agent, "add_note", reference_id=ref["id"], text="keep me")
+    await _call(agent, "delete_reference", reference_id=ref["id"])
+
+    back = await _call(agent, "restore_reference", library_id=lib_id, reference_id=ref["id"])
+    assert back["id"] == ref["id"]
+    full = await _call(agent, "get_reference", reference_id=ref["id"])
+    assert [n["body"] for n in full["notes"]] == ["keep me"]
+    assert (await _call(agent, "list_trash", library_id=lib_id)) == {"trash": []}
+
+
+async def test_delete_reference_respects_permissions(agent, db, make_user):
+    bob = await make_user("bob@e4e.local", "Bob")
+    lib = Library(name="Bob's", owner_id=bob.id)
+    db.add(lib)
+    await db.flush()
+    item = Item(library_id=lib.id, citation_key="k", type="document", csl_json={}, title="B")
+    db.add(item)
+    await db.commit()
+    err = await _call_error(agent, "delete_reference", reference_id=str(item.id))
+    assert "404" in err or "403" in err
+    await db.refresh(item)
+    assert item.deleted_at is None
