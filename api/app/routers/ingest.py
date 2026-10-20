@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..audit import item_snapshot, record
 from ..auth import get_current_user
 from ..db import get_session
-from ..dedupe import csl_match_keys, find_duplicate_groups, library_index, merge_into
+from ..dedupe import find_duplicate_groups, library_index, merge_into
 from ..deps import item_editor, library_editor
 from ..grobid import extract_header_csl
 from ..ingest import IngestError, fetch_csl, gen_citation_key, normalize_doi
@@ -44,17 +44,16 @@ async def ingest_identifier(
 
     # Same duplicate rule as .bib import: DOI, else normalized title + year (identifiers
     # like ISBNs and many URLs resolve without a DOI).
-    _, owner = await library_index(session, lib.id)
+    _, index = await library_index(session, lib.id)
 
     results: list[IngestResultItem] = []
     for csl in csl_list:
         nd = normalize_doi(csl.get("DOI"))
-        mkeys = csl_match_keys(csl)
-        if hit := next((k for k in mkeys if k in owner), None):
+        if hit := index.find_csl(csl):
             results.append(
                 IngestResultItem(
                     status="duplicate",
-                    item_id=owner[hit],
+                    item_id=hit[1],
                     citation_key="",
                     title=csl.get("title", ""),
                     doi=nd,
@@ -76,8 +75,7 @@ async def ingest_identifier(
             summary=f"Imported “{item.title or key}”",
             after=item_snapshot(item),
         )
-        for k in mkeys:
-            owner.setdefault(k, item.id)
+        index.add_csl(csl, item.id)
         results.append(
             IngestResultItem(
                 status="created", item_id=item.id, citation_key=key, title=item.title, doi=nd
