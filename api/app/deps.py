@@ -25,6 +25,13 @@ def _rank(level: str | None) -> int:
     return _ACCESS_RANK.get(level or "", 0)
 
 
+def may_change_contribution(level: str | None, *, is_author: bool) -> bool:
+    """Whether a note/annotation may be edited or deleted: a library manager may change
+    anyone's; its author only while they still have edit access (a downgrade to view
+    freezes what they wrote)."""
+    return _rank(level) >= _rank("manage") or (is_author and _rank(level) >= _rank("edit"))
+
+
 async def user_group_ids(session: AsyncSession, user: User) -> set[uuid.UUID]:
     rows = await session.execute(
         select(user_group.c.group_id).where(user_group.c.user_id == user.id)

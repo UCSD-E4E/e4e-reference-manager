@@ -99,3 +99,53 @@ async def test_annotation_rbac(client, make_user, login, monkeypatch):
     assert (await client.get(f"/attachments/{att}/annotations")).status_code == 200
     denied = await client.post(f"/attachments/{att}/annotations", json={"page": 1, "rects": []})
     assert denied.status_code == 403
+
+
+async def test_author_downgraded_to_view_can_no_longer_change_their_annotation(
+    client, make_user, login, monkeypatch
+):
+    alice, bob = await make_user("alice@x"), await make_user("bob@x")
+    login(bob)
+    group = (await client.post("/groups", json={"slug": "team", "name": "Team"})).json()
+    login(alice)
+    lib = (await client.post("/libraries", json={"name": "Alice"})).json()["id"]
+    _, att = await _item_with_attachment(client, lib, monkeypatch)
+    share = {"group_id": group["id"], "access_level": "edit"}
+    await client.post(f"/libraries/{lib}/shares", json=share)
+
+    login(bob)
+    ann = (
+        await client.post(f"/attachments/{att}/annotations", json={"page": 1, "rects": []})
+    ).json()
+
+    login(alice)
+    await client.post(f"/libraries/{lib}/shares", json={**share, "access_level": "view"})
+
+    login(bob)
+    r = await client.patch(f"/annotations/{ann['id']}", json={"comment": "x"})
+    assert r.status_code == 403
+    assert (await client.delete(f"/annotations/{ann['id']}")).status_code == 403
+
+    login(alice)  # the library's manager keeps the override
+    assert (await client.delete(f"/annotations/{ann['id']}")).status_code == 204
+
+
+async def test_annotation_update_audits_before_and_after(client, library, monkeypatch, db):
+    from sqlalchemy import select
+
+    from app.models import AuditEvent
+
+    _, att = await _item_with_attachment(client, library, monkeypatch)
+    ann = (
+        await client.post(
+            f"/attachments/{att}/annotations", json={"page": 1, "rects": [], "comment": "old"}
+        )
+    ).json()
+    await client.patch(f"/annotations/{ann['id']}", json={"comment": "new"})
+    ev = await db.scalar(
+        select(AuditEvent).where(
+            AuditEvent.entity_type == "annotation", AuditEvent.operation == "update"
+        )
+    )
+    assert ev.before["comment"] == "old"
+    assert ev.after["comment"] == "new"

@@ -93,7 +93,11 @@ async def client(engine, _auth_state):
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_auth_context] = override_auth
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
+    # Like the web app's own fetches: writes carry the app's Origin (see app/csrf.py).
+    origin = get_settings().post_login_redirect.rstrip("/")
+    async with AsyncClient(
+        transport=transport, base_url="http://test", headers={"Origin": origin}
+    ) as c:
         yield c
     app.dependency_overrides.clear()
 

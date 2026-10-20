@@ -12,7 +12,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import __version__
 from .auth import register_oidc
-from .config import Settings, get_settings
+from .config import Settings, check_settings, get_settings
+from .csrf import CSRFMiddleware
 from .db import SessionLocal
 from .mcp_server import mcp_endpoint, mount_mcp
 from .routers import (
@@ -65,11 +66,20 @@ def session_cookie_https_only(s: Settings) -> bool:
     return s.app_base_url.startswith("https://")
 
 
+check_settings(settings)  # refuse to start with dev auth settings in a deployment
+
 app = FastAPI(title="e4e Reference Manager API", version=__version__, lifespan=lifespan)
 
+SESSION_COOKIE = "session"
+# Middleware added later wraps earlier ones: CSRF runs inside CORS, so its 403s still
+# carry CORS headers the dev web app can read.
+app.add_middleware(CSRFMiddleware, session_cookie=SESSION_COOKIE)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret,
+    session_cookie=SESSION_COOKIE,
+    # The cookie lasts as long as a sign-in may (auth.py enforces it server-side too).
+    max_age=settings.session_lifetime_hours * 3600,
     same_site="lax",
     https_only=session_cookie_https_only(settings),
 )

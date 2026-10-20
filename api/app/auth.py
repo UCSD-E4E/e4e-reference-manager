@@ -10,8 +10,10 @@ Scripts and agents authenticate with a personal API token instead, sent as
 from __future__ import annotations
 
 import hashlib
+import itertools
 import re
 import secrets
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -19,7 +21,8 @@ from datetime import datetime, timedelta, timezone
 from authlib.integrations.starlette_client import OAuth
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import insert, or_, select, update
+from sqlalchemy import delete, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
@@ -44,38 +47,59 @@ def _slugify(name: str) -> str:
     return s or "group"
 
 
+async def _authentik_group_id(session: AsyncSession, name: str) -> uuid.UUID:
+    """The group mirroring Authentik group `name`, created on first sight. Concurrent
+    first logins can race to create it: the insert skips a slug that is already taken
+    (waiting for the other login to commit), and the loop then finds that login's group."""
+    base = _slugify(name)
+    for i in itertools.count(1):
+        gid = await session.scalar(
+            select(Group.id)
+            .where(Group.authentik_ref == name)
+            .order_by(Group.created_at)
+            .limit(1)
+        )
+        if gid is not None:
+            return gid
+        gid = await session.scalar(
+            pg_insert(Group)
+            .values(slug=base if i == 1 else f"{base}-{i}", name=name, authentik_ref=name)
+            .on_conflict_do_nothing(index_elements=[Group.slug])
+            .returning(Group.id)
+        )
+        if gid is not None:
+            return gid
+    raise AssertionError("unreachable")
+
+
 async def sync_user_groups(session: AsyncSession, user: User, group_names: list[str]) -> None:
-    """Reconcile a user's group memberships from Authentik group claims (additive),
-    and grant org admin if they're in the configured admin group."""
+    """Make a user's Authentik-sourced group memberships match their `groups` claim:
+    join the groups it names and leave the synced groups it no longer names (groups
+    managed in the app, without an `authentik_ref`, are left alone). When an admin group
+    is configured, org admin follows membership of it in both directions."""
     s = get_settings()
-    desired_ids = []
     # The claim can name a group more than once; one membership row per group.
-    for name in dict.fromkeys(group_names):
-        group = await session.scalar(select(Group).where(Group.authentik_ref == name))
-        if group is None:
-            base = _slugify(name)
-            slug, i = base, 1
-            while await session.scalar(select(Group).where(Group.slug == slug)) is not None:
-                i += 1
-                slug = f"{base}-{i}"
-            group = Group(slug=slug, name=name, authentik_ref=name)
-            session.add(group)
-            await session.flush()
-        desired_ids.append(group.id)
-
-    existing = set(
-        (
-            await session.execute(
-                select(user_group.c.group_id).where(user_group.c.user_id == user.id)
-            )
-        ).scalars()
+    desired = {await _authentik_group_id(session, name) for name in dict.fromkeys(group_names)}
+    synced = select(Group.id).where(Group.authentik_ref.is_not(None))
+    await session.execute(
+        delete(user_group).where(
+            user_group.c.user_id == user.id,
+            user_group.c.group_id.in_(synced),
+            user_group.c.group_id.not_in(desired),
+        )
     )
-    for gid in desired_ids:
-        if gid not in existing:
-            await session.execute(insert(user_group).values(user_id=user.id, group_id=gid))
+    if desired:
+        await session.execute(
+            pg_insert(user_group)
+            .values([{"user_id": user.id, "group_id": gid} for gid in desired])
+            .on_conflict_do_nothing()
+        )
 
-    if s.oidc_admin_group and s.oidc_admin_group in group_names:
-        user.org_role = "admin"
+    if s.oidc_admin_group:
+        if s.oidc_admin_group in group_names:
+            user.org_role = "admin"
+        elif user.org_role == "admin":
+            user.org_role = "member"
     await session.commit()
 
 
@@ -95,13 +119,38 @@ def register_oidc() -> bool:
 
 
 async def get_or_create_user(session: AsyncSession, sub: str, email: str, name: str) -> User:
-    user = (await session.execute(select(User).where(User.sub == sub))).scalar_one_or_none()
+    user = await session.scalar(select(User).where(User.sub == sub))
     if user is None:
-        user = User(sub=sub, email=email, name=name)
-        session.add(user)
+        # Two first requests (or logins) can race here: the loser's insert does nothing
+        # and it reads the winner's row instead of failing on the unique `sub`.
+        await session.execute(
+            pg_insert(User)
+            .values(sub=sub, email=email, name=name)
+            .on_conflict_do_nothing(index_elements=[User.sub])
+        )
         await session.commit()
-        await session.refresh(user)
+        user = await session.scalar(select(User).where(User.sub == sub))
     return user
+
+
+SESSION_LOGIN_AT = "login_at"
+
+
+def epoch_now() -> int:
+    return int(time.time())
+
+
+def login_timestamp() -> int:
+    """What the OIDC callback stores in the session as the sign-in time."""
+    return epoch_now()
+
+
+def session_expired(login_at: object, lifetime_hours: int) -> bool:
+    """A sign-in is good for `lifetime_hours`; one without a timestamp (an older cookie)
+    counts as expired."""
+    if not isinstance(login_at, int):
+        return True
+    return epoch_now() - login_at > lifetime_hours * 3600
 
 
 def hash_api_token(raw: str) -> str:
@@ -193,6 +242,10 @@ async def get_auth_context(
     sub = request.session.get("user_sub")
     if not sub:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    if session_expired(request.session.get(SESSION_LOGIN_AT), s.session_lifetime_hours):
+        # Re-checking with Authentik is what revokes access for disabled accounts.
+        request.session.clear()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired; sign in again")
     user = (await session.execute(select(User).where(User.sub == sub))).scalar_one_or_none()
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unknown user")
