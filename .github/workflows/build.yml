@@ -1,6 +1,6 @@
 name: Build
 
-# Dockerfile-validity check: builds both images on every PR and push to main, pushes
+# Dockerfile-validity check: builds the images on every PR and push to main, pushes
 # nothing (release.yml pushes, at a version tag). Also evaluates the tenant flake so a
 # broken deploy/incus/*.nix or a krg-infra contract change fails here, not on the slot.
 
@@ -19,9 +19,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        context: [api, web]
+        include:
+          - context: api
+          - context: web
+          # Built from upstream at deploy/translation-server.ref (see release.yml).
+          - context: upstream/translation-server
+            upstream: zotero/translation-server
     steps:
       - uses: actions/checkout@v4
+      - name: Upstream commit
+        if: matrix.upstream
+        id: upstream
+        run: echo "ref=$(cat deploy/translation-server.ref)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: matrix.upstream
+        with:
+          repository: ${{ matrix.upstream }}
+          ref: ${{ steps.upstream.outputs.ref }}
+          path: ${{ matrix.context }}
+          submodules: recursive
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
