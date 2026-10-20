@@ -76,7 +76,7 @@ class AttachmentText(BaseModel):
 
 class FetchedPdf(BaseModel):
     attachment: AttachmentOut
-    source: str  # unpaywall | arxiv
+    source: str  # unpaywall | arxiv | url
     url: str
 
 

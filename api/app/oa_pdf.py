@@ -1,8 +1,8 @@
 """Find and download a legal open-access copy of a paper's PDF.
 
 Sources, best first: Unpaywall (DOI -> open-access locations: publisher OA, PubMed
-Central, institutional repositories), then arXiv. Paywalled papers with no OA copy
-can't be fetched.
+Central, institutional repositories), then arXiv, then the reference's own URL (when it
+points straight at a public PDF). Paywalled papers with no OA copy can't be fetched.
 
 URLs come from third parties and redirect freely, so every hop is checked: http(s)
 only, and the host must resolve to public addresses (not the slot's own network, e.g.
@@ -75,9 +75,22 @@ async def _unpaywall_pdf_urls(doi: str) -> list[str]:
     return urls
 
 
+# Hosts whose links the DOI (Unpaywall) and arXiv candidates already cover.
+_COVERED_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org", "doi.org", "dx.doi.org"}
+
+
+def _reference_url(csl: dict) -> str | None:
+    """The reference's own URL, if it's an http(s) link worth trying."""
+    url = (csl.get("URL") or "").strip()
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    return None if parts.hostname.lower() in _COVERED_HOSTS else url
+
+
 def has_identifier(csl: dict) -> bool:
-    """Whether there's anything to look up (a DOI or an arXiv id)."""
-    return bool(normalize_doi(csl.get("DOI")) or extract_arxiv_id(csl))
+    """Whether there's anything to look up (a DOI, an arXiv id, or a usable URL)."""
+    return bool(normalize_doi(csl.get("DOI")) or extract_arxiv_id(csl) or _reference_url(csl))
 
 
 async def find_candidates(csl: dict) -> list[tuple[str, str]]:
@@ -87,6 +100,10 @@ async def find_candidates(csl: dict) -> list[tuple[str, str]]:
         out += [("unpaywall", u) for u in await _unpaywall_pdf_urls(doi)]
     if arxiv_id := extract_arxiv_id(csl):
         out.append(("arxiv", f"https://arxiv.org/pdf/{arxiv_id}"))
+    # Last resort: the reference may link straight to a PDF (a lab page, a repository).
+    # download_pdf checks it like any other: public host, size cap, really a PDF.
+    if (url := _reference_url(csl)) and url not in {u for _, u in out}:
+        out.append(("url", url))
     return out
 
 

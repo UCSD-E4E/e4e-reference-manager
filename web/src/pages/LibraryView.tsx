@@ -143,7 +143,7 @@ export default function LibraryView() {
       `attached ${t.attached}, ${t.already_had_pdf} already had a PDF, ` +
       `${t.not_found} no open-access copy, ${t.no_identifier} without a DOI/arXiv id` +
       (t.failed ? `, ${t.failed} failed (run again to retry)` : "");
-    setFetchPdfsMsg("Looking for open-access PDFs (Unpaywall, arXiv)…");
+    setFetchPdfsMsg("Looking for open-access PDFs (Unpaywall, arXiv, its URL)…");
     try {
       // The server works in small batches so no single request runs long; loop until done.
       let after: string | null = null;
@@ -431,7 +431,7 @@ export default function LibraryView() {
               type="button"
               onClick={doFetchPdfs}
               disabled={fetchingPdfs}
-              title="Fetch a legal open-access copy (Unpaywall by DOI, then arXiv) for every reference without a PDF"
+              title="Fetch a legal open-access copy (Unpaywall by DOI, then arXiv, then its URL) for every reference without a PDF"
             >
               {fetchingPdfs ? "Finding PDFs…" : "Find PDFs"}
             </button>
