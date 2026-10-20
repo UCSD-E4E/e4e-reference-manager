@@ -82,6 +82,7 @@
         ./deploy/incus/secrets.nix # extends krg.vaultAgent.renders → /run/tenant/secrets/*.env
         ./deploy/incus/workdir.nix # populate /var/lib/krg/reference-manager so the compose's relative binds resolve
         ./deploy/incus/prune.nix # reclaim superseded images after each converge (GROBID/Ollama are large)
+        ./deploy/incus/recover.nix # un-latch a `failed` stack unit (hourly, once the disk has room)
       ];
     };
 
