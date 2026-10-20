@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.15.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.0...v1.15.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **api:** run the API image as an unprivileged user ([3fcf757](https://github.com/UCSD-E4E/e4e-reference-manager/commit/3fcf757fa6e752208ce4ea2a8537de5137a2ab1d))
+* **deploy:** decouple traefik, add healthchecks, log/memory limits, safer backups ([f404d46](https://github.com/UCSD-E4E/e4e-reference-manager/commit/f404d46f48a92d490e00b5e1138589e11f9f2432))
+* **deploy:** harden the reference-manager slot after the 2026-10-20 full-disk outage ([2c7e340](https://github.com/UCSD-E4E/e4e-reference-manager/commit/2c7e340977fcb3b7f087cb1eb5ff94c21e0edb4c))
+* **deploy:** never prune an image compose.yml names; prune only after a good start ([dcf8c26](https://github.com/UCSD-E4E/e4e-reference-manager/commit/dcf8c260dca1c0c0c02e84a605cf51526e51ec09))
+* **deploy:** un-latch a failed compose-stack unit once the slot can start it ([496c5d1](https://github.com/UCSD-E4E/e4e-reference-manager/commit/496c5d134e1efea5c5aec65a151e88282f1d6414))
+* keep PDFs when merging and stop deduping different DOIs ([16d7ff4](https://github.com/UCSD-E4E/e4e-reference-manager/commit/16d7ff40577aeef04c55661e3285a7d785c908af))
+* keep PDFs when merging and stop deduping different DOIs ([75a42b6](https://github.com/UCSD-E4E/e4e-reference-manager/commit/75a42b6e15ba875db92babbe34fab9cdb1fec821))
+* validate input and harden auto-groups, exports, reindex and MCP auth ([8804e7d](https://github.com/UCSD-E4E/e4e-reference-manager/commit/8804e7dc97ca98ed28e8ac56b9bf5ae4ef503aa1))
+* validate input and harden auto-groups, exports, reindex and MCP auth ([a12bcca](https://github.com/UCSD-E4E/e4e-reference-manager/commit/a12bcca5b59fa41241bb1fcaa72a0ebde2dc9812))
+* **web:** debounce search, drop stale results, surface delete errors ([a639721](https://github.com/UCSD-E4E/e4e-reference-manager/commit/a6397210a9ed3a1c87839fbf76fa80881890a1c6))
+* **web:** debounce search, drop stale results, surface delete errors ([be7d682](https://github.com/UCSD-E4E/e4e-reference-manager/commit/be7d6829a4f1606b5f1e20b66a79d712e74f088a))
+
 ## [1.15.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.14.0...v1.15.0) (2026-10-20)
 
 
