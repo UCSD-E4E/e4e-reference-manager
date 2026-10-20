@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.3](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.2...v1.15.3) (2026-10-20)
+
+
+### Bug Fixes
+
+* verify DataCite DOIs (arXiv, Zenodo) instead of flagging them not_found ([050b5c9](https://github.com/UCSD-E4E/e4e-reference-manager/commit/050b5c92b654c5bd1e4510b79e0a5f78bb73d4fc))
+* verify DataCite DOIs (arXiv, Zenodo) instead of flagging them not_found ([33f98f5](https://github.com/UCSD-E4E/e4e-reference-manager/commit/33f98f57fa67add3c4fe1bd305d9d6475b1ecf78))
+
 ## [1.15.2](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.1...v1.15.2) (2026-10-20)
 
 
