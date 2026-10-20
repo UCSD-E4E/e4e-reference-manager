@@ -23,7 +23,7 @@ from ..auth import get_current_user
 from ..db import get_session
 from ..deps import _rank, library_access_level, library_editor, library_viewer
 from ..models import AutoGroup, Item, Library, Tag, User, item_tag
-from ..schemas import AutoGroupCreate, AutoGroupGenerate, AutoGroupOut
+from ..schemas import NAME_MAX, AutoGroupCreate, AutoGroupGenerate, AutoGroupOut
 from .bib import _bib_response
 from .ml import apply_ml_tags
 
@@ -41,7 +41,7 @@ def _autogroup_select(ag: AutoGroup) -> Select:
     if ag.kind == "field":
         field = params.get("field")
         value = params.get("value")
-        if value is None:
+        if not isinstance(value, str):  # rules are validated on create; be safe anyway
             return base.where(text("false"))
         if field == "year":
             try:
@@ -64,8 +64,11 @@ def _autogroup_select(ag: AutoGroup) -> Select:
         return base.where(text("false"))
 
     if ag.kind == "tag":
-        name = (params.get("name") or "").lower()
+        name = params.get("name")
         source = params.get("source")
+        if not isinstance(name, str) or not isinstance(source, str | None):
+            return base.where(text("false"))
+        name = name.lower()
         q = (
             base.join(item_tag, item_tag.c.item_id == Item.id)
             .join(Tag, Tag.id == item_tag.c.tag_id)
@@ -76,7 +79,8 @@ def _autogroup_select(ag: AutoGroup) -> Select:
         return q
 
     if ag.kind == "search":
-        q = (params.get("q") or "").strip()
+        q = params.get("q")
+        q = q.strip() if isinstance(q, str) else ""
         if not q:
             return base.where(text("false"))
         tsquery = func.websearch_to_tsquery("english", q)
@@ -90,9 +94,86 @@ async def _count(session: AsyncSession, ag: AutoGroup) -> int:
     return int(n or 0)
 
 
+# Author family names per live item, for generating and counting author groups. Matches
+# _autogroup_select's `author @> [{"family": v}]`; tolerates a non-array `author`.
+_AUTHOR_FAMILIES = (
+    "SELECT a->>'family' AS family, count(DISTINCT item.id) AS n "
+    "FROM item, jsonb_array_elements(CASE jsonb_typeof(csl_json->'author') "
+    "  WHEN 'array' THEN csl_json->'author' ELSE '[]'::jsonb END) AS a "
+    "WHERE library_id = :lib AND deleted_at IS NULL AND a->>'family' IS NOT NULL "
+    "GROUP BY 1"
+)
+_JOURNAL = Item.csl_json["container-title"].astext
+
+
+class _Counter:
+    """Member counts for many auto-groups of one library in a handful of grouped queries
+    (one per rule kind) instead of one COUNT per group. Search groups, which need a
+    full-text match each, are still counted one by one."""
+
+    def __init__(self, session: AsyncSession, lib_id: uuid.UUID):
+        self.session = session
+        self.lib_id = lib_id
+        self._cache: dict[str, dict] = {}
+
+    async def _grouped(self, key: str, *cols) -> dict:
+        if key not in self._cache:
+            live = (
+                select(*cols, func.count(func.distinct(Item.id)))
+                .select_from(Item)
+                .where(Item.library_id == self.lib_id, Item.deleted_at.is_(None))
+            )
+            if key.startswith("tag"):
+                live = live.join(item_tag, item_tag.c.item_id == Item.id).join(
+                    Tag, Tag.id == item_tag.c.tag_id
+                )
+            rows = await self.session.execute(live.group_by(*cols))
+            self._cache[key] = {tuple(r[:-1]): r[-1] for r in rows.all()}
+        return self._cache[key]
+
+    async def _authors(self) -> dict:
+        if "author" not in self._cache:
+            rows = await self.session.execute(text(_AUTHOR_FAMILIES).bindparams(lib=self.lib_id))
+            self._cache["author"] = {(r.family,): r.n for r in rows}
+        return self._cache["author"]
+
+    async def count(self, ag: AutoGroup) -> int:
+        p = ag.params or {}
+        value = p.get("value")
+        if ag.kind == "field" and isinstance(value, str):
+            field = p.get("field")
+            if field == "year":
+                try:
+                    year = int(value)
+                except ValueError:
+                    return 0
+                return (await self._grouped("year", Item.year)).get((year,), 0)
+            if field == "type":
+                return (await self._grouped("type", Item.type)).get((value,), 0)
+            if field == "journal":
+                return (await self._grouped("journal", _JOURNAL)).get((value,), 0)
+            if field == "author":
+                return (await self._authors()).get((value,), 0)
+            return 0
+        if ag.kind == "tag":
+            name, source = p.get("name"), p.get("source")
+            if not isinstance(name, str) or not isinstance(source, str | None):
+                return 0
+            if source is None:
+                counts = await self._grouped("tag", func.lower(Tag.name))
+                return counts.get((name.lower(),), 0)
+            counts = await self._grouped("tag+source", func.lower(Tag.name), Tag.source)
+            return counts.get((name.lower(), source), 0)
+        if ag.kind == "search":
+            return await _count(self.session, ag)
+        return 0
+
+
 async def _hydrate(session: AsyncSession, ags: Iterable[AutoGroup]) -> list[AutoGroupOut]:
     out: list[AutoGroupOut] = []
+    counters: dict[uuid.UUID, _Counter] = {}
     for ag in ags:
+        counter = counters.setdefault(ag.library_id, _Counter(session, ag.library_id))
         out.append(
             AutoGroupOut(
                 id=ag.id,
@@ -100,7 +181,7 @@ async def _hydrate(session: AsyncSession, ags: Iterable[AutoGroup]) -> list[Auto
                 name=ag.name,
                 kind=ag.kind,
                 params=ag.params or {},
-                count=await _count(session, ag),
+                count=await counter.count(ag),
                 created_at=ag.created_at,
             )
         )
@@ -140,8 +221,6 @@ async def create_auto_group(
     lib: Library = Depends(library_editor),
     session: AsyncSession = Depends(get_session),
 ):
-    if payload.kind not in ("field", "tag", "search"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown kind: {payload.kind}")
     ag = AutoGroup(
         library_id=lib.id, name=payload.name, kind=payload.kind, params=payload.params
     )
@@ -191,113 +270,91 @@ async def export_auto_group(
 
 # ---------- generate ----------
 
-async def _exists(session: AsyncSession, lib_id: uuid.UUID, kind: str, params: dict) -> bool:
-    """True if an auto-group with identical kind+params already exists in the library."""
-    rows = await session.execute(
-        select(AutoGroup.id).where(AutoGroup.library_id == lib_id, AutoGroup.kind == kind)
-    )
-    for (gid,) in rows.all():
-        existing = await session.get(AutoGroup, gid)
-        if existing and (existing.params or {}) == params:
-            return True
-    return False
+def _rule_key(kind: str, params: dict) -> tuple[str, str]:
+    return kind, json.dumps(params, sort_keys=True)
+
+
+class _Creator:
+    """Adds auto-groups to a library, skipping any whose kind+params already exist there.
+    The existing rules are loaded once, so generating thousands of groups stays linear."""
+
+    def __init__(self, session: AsyncSession, lib: Library):
+        self.session = session
+        self.lib = lib
+        self.created: list[AutoGroup] = []
+        self._seen: set[tuple[str, str]] | None = None
+
+    async def add(self, name: str, kind: str, params: dict) -> None:
+        if self._seen is None:
+            rows = await self.session.execute(
+                select(AutoGroup.kind, AutoGroup.params).where(
+                    AutoGroup.library_id == self.lib.id
+                )
+            )
+            self._seen = {_rule_key(k, p or {}) for k, p in rows.all()}
+        key = _rule_key(kind, params)
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        # Generated from free-text metadata: keep the full value in params, cap the label.
+        ag = AutoGroup(library_id=self.lib.id, name=name[:NAME_MAX], kind=kind, params=params)
+        self.session.add(ag)
+        self.created.append(ag)
 
 
 async def _generate_field(
     session: AsyncSession, lib: Library, field: str
 ) -> list[AutoGroup]:
-    created: list[AutoGroup] = []
+    creator = _Creator(session, lib)
+    live = (Item.library_id == lib.id, Item.deleted_at.is_(None))
     if field == "year":
         rows = await session.execute(
-            select(Item.year)
-            .where(Item.library_id == lib.id, Item.year.is_not(None))
-            .distinct()
+            select(Item.year).where(*live, Item.year.is_not(None)).distinct()
         )
-        values = sorted({y for (y,) in rows.all() if y is not None})
-        for y in values:
-            params = {"field": "year", "value": str(y)}
-            if await _exists(session, lib.id, "field", params):
-                continue
-            ag = AutoGroup(library_id=lib.id, name=str(y), kind="field", params=params)
-            session.add(ag)
-            created.append(ag)
+        for y in sorted(y for (y,) in rows.all() if y is not None):
+            await creator.add(str(y), "field", {"field": "year", "value": str(y)})
     elif field == "type":
-        rows = await session.execute(
-            select(Item.type).where(Item.library_id == lib.id).distinct()
-        )
+        rows = await session.execute(select(Item.type).where(*live).distinct())
         for (t,) in rows.all():
-            if not t:
-                continue
-            params = {"field": "type", "value": t}
-            if await _exists(session, lib.id, "field", params):
-                continue
-            ag = AutoGroup(library_id=lib.id, name=t, kind="field", params=params)
-            session.add(ag)
-            created.append(ag)
+            if t:
+                await creator.add(t, "field", {"field": "type", "value": t})
     elif field == "journal":
         rows = await session.execute(
-            text(
-                "SELECT DISTINCT csl_json->>'container-title' AS j "
-                "FROM item WHERE library_id = :lib AND csl_json->>'container-title' IS NOT NULL"
-            ).bindparams(lib=lib.id)
+            select(_JOURNAL).where(*live, _JOURNAL.is_not(None)).distinct()
         )
-        for r in rows:
-            j = r.j
-            if not j:
-                continue
-            params = {"field": "journal", "value": j}
-            if await _exists(session, lib.id, "field", params):
-                continue
-            ag = AutoGroup(library_id=lib.id, name=j, kind="field", params=params)
-            session.add(ag)
-            created.append(ag)
+        for (j,) in rows.all():
+            if j:
+                await creator.add(j, "field", {"field": "journal", "value": j})
     elif field == "author":
-        rows = await session.execute(
-            text(
-                "SELECT DISTINCT a->>'family' AS family "
-                "FROM item, jsonb_array_elements("
-                "  coalesce(csl_json->'author', '[]'::jsonb)) AS a "
-                "WHERE library_id = :lib AND a->>'family' IS NOT NULL"
-            ).bindparams(lib=lib.id)
-        )
+        rows = await session.execute(text(_AUTHOR_FAMILIES).bindparams(lib=lib.id))
         for r in rows:
-            fam = r.family
-            if not fam:
-                continue
-            params = {"field": "author", "value": fam}
-            if await _exists(session, lib.id, "field", params):
-                continue
-            ag = AutoGroup(library_id=lib.id, name=fam, kind="field", params=params)
-            session.add(ag)
-            created.append(ag)
-    return created
+            if r.family:
+                await creator.add(r.family, "field", {"field": "author", "value": r.family})
+    return creator.created
 
 
 async def _generate_tags(
     session: AsyncSession, lib: Library, source: str | None, min_items: int = 1
 ) -> list[AutoGroup]:
-    q = select(Tag).where(Tag.library_id == lib.id)
+    # Tags on at least `min_items` papers outside the trash.
+    shared = (
+        select(item_tag.c.tag_id)
+        .join(Item, Item.id == item_tag.c.item_id)
+        .where(Item.deleted_at.is_(None))
+        .group_by(item_tag.c.tag_id)
+        .having(func.count() >= min_items)
+    )
+    q = select(Tag).where(Tag.library_id == lib.id, Tag.id.in_(shared))
     if source:
         q = q.where(Tag.source == source)
-    if min_items > 1:
-        shared = (
-            select(item_tag.c.tag_id)
-            .group_by(item_tag.c.tag_id)
-            .having(func.count() >= min_items)
-        )
-        q = q.where(Tag.id.in_(shared))
     rows = await session.execute(q)
-    created: list[AutoGroup] = []
+    creator = _Creator(session, lib)
     for tag in rows.scalars().all():
         params: dict = {"name": tag.name}
         if source:
             params["source"] = source
-        if await _exists(session, lib.id, "tag", params):
-            continue
-        ag = AutoGroup(library_id=lib.id, name=tag.name, kind="tag", params=params)
-        session.add(ag)
-        created.append(ag)
-    return created
+        await creator.add(tag.name, "tag", params)
+    return creator.created
 
 
 # Model calls per "generate from ML tags" request. Ollama answers one prompt at a time
@@ -344,9 +401,13 @@ async def _generate_topics(session: AsyncSession, lib: Library) -> dict:
             select(Item).where(Item.library_id == lib.id).order_by(Item.created_at, Item.id)
         )
     ).scalars().all()
+    backfilled = False
     for item in items:  # e.g. imported while Ollama was down
         if item.embedding is None:
             item.embedding = await embeddings.embed_item_csl(item.csl_json)
+            backfilled = backfilled or item.embedding is not None
+    if backfilled:  # keep them even if naming the topics fails below
+        await session.commit()
     embedded = [i for i in items if i.embedding is not None]
     if len(embedded) < topics.MIN_TOPIC_ITEMS:
         raise HTTPException(

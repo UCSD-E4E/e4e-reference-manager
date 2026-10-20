@@ -8,7 +8,7 @@ from .. import llm
 from ..db import get_session
 from ..deps import item_editor, item_viewer
 from ..models import Item, Tag
-from ..schemas import SuggestedTags, SummaryOut, TagOut, TagsIn
+from ..schemas import NAME_MAX, SuggestedTags, SummaryOut, TagOut, TagsIn
 
 router = APIRouter(tags=["ml"])
 
@@ -19,16 +19,24 @@ async def list_item_tags(item: Item = Depends(item_viewer)):
 
 
 async def apply_ml_tags(session: AsyncSession, item: Item, names: list[str]) -> list[Tag]:
-    """Attach `names` to the item as ml-sourced tags, reusing the project's existing tag of
-    the same name. Returns the newly attached tags; the caller commits."""
+    """Attach `names` to the item as ml-sourced tags, reusing the project's existing ml tag
+    of the same name. Returns the newly attached tags; the caller commits.
+
+    Only ml tags count: having an ml tag is how an item is marked as already sent to the
+    model, so a same-named manual or topic tag must not stand in for one."""
     applied: list[Tag] = []
-    existing = {t.name.lower() for t in item.tags}
+    existing = {t.name.lower() for t in item.tags if t.source == "ml"}
     for name in names:
+        name = name[:NAME_MAX]  # the model can ramble; Tag.name is String(255)
         if name in existing:
             continue
         tag = (
             await session.execute(
-                select(Tag).where(Tag.library_id == item.library_id, func.lower(Tag.name) == name)
+                select(Tag).where(
+                    Tag.library_id == item.library_id,
+                    Tag.source == "ml",
+                    func.lower(Tag.name) == name,
+                )
             )
         ).scalars().first()
         if tag is None:

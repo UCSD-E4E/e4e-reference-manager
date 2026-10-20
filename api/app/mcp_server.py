@@ -28,6 +28,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import Field
+from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
@@ -549,7 +550,7 @@ class McpEndpoint:
                 self._manager = None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        headers = {k.decode().lower(): v.decode() for k, v in scope["headers"]}
+        headers = Headers(scope=scope)  # latin-1, like the HTTP spec; never raises
         # Demand a Bearer token outright: with REFMAN_DEV_AUTH the API would otherwise
         # accept a header-less request as the dev user.
         token = _bearer_token(headers.get("authorization", ""))

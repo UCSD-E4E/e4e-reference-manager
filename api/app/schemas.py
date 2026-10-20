@@ -4,7 +4,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .auth import DEFAULT_TOKEN_DAYS, MAX_TOKEN_DAYS
 
@@ -197,8 +199,14 @@ class ImportResult(BaseModel):
 # --- Collections (Phase 4) ---
 
 
+# Bounds of the String(n) / INTEGER columns these fields are stored in.
+NAME_MAX = 255
+COLOR_MAX = 16
+INT32_MAX = 2**31 - 1
+
+
 class CollectionCreate(BaseModel):
-    name: str
+    name: str = Field(max_length=NAME_MAX)
     parent_id: uuid.UUID | None = None
 
 
@@ -214,10 +222,40 @@ class CollectionOut(BaseModel):
 # --- Auto-groups (Phase 7) ---
 
 
+AUTO_GROUP_FIELDS = ("year", "type", "journal", "author")
+
+
+def _str_param(params: dict, key: str, *, required: bool = True) -> None:
+    value = params.get(key)
+    if value is None and not required:
+        return
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"params.{key} must be a non-empty string")
+
+
 class AutoGroupCreate(BaseModel):
-    name: str
-    kind: str  # field | tag | search
+    name: str = Field(max_length=NAME_MAX)
+    kind: Literal["field", "tag", "search"]
     params: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_params(self) -> AutoGroupCreate:
+        """Reject rules the membership query can't run, so a broken group is never
+        stored (where it would break listing the library's auto-groups)."""
+        p = self.params
+        if self.kind == "field":
+            if p.get("field") not in AUTO_GROUP_FIELDS:
+                raise ValueError(f"params.field must be one of {', '.join(AUTO_GROUP_FIELDS)}")
+            _str_param(p, "value")
+            if p["field"] == "year" and not p["value"].strip().isdigit():
+                raise ValueError("params.value must be a year")
+        elif self.kind == "tag":
+            _str_param(p, "name")
+            _str_param(p, "source", required=False)
+        else:
+            _str_param(p, "q")
+            _str_param(p, "mode", required=False)
+        return self
 
 
 class AutoGroupOut(BaseModel):
@@ -247,7 +285,7 @@ class TagOut(BaseModel):
 
 
 class TagsIn(BaseModel):
-    tags: list[str]
+    tags: list[Annotated[str, Field(max_length=NAME_MAX)]]
 
 
 class SuggestedTags(BaseModel):
@@ -314,15 +352,15 @@ class NoteOut(BaseModel):
 
 
 class AnnotationCreate(BaseModel):
-    page: int = 1
+    page: int = Field(default=1, ge=1, le=INT32_MAX)
     rects: list[dict] = Field(default_factory=list)  # [{x,y,w,h}] normalized 0..1
-    color: str = "#ffd54f"
+    color: str = Field(default="#ffd54f", max_length=COLOR_MAX)
     quote: str = ""
     comment: str = ""
 
 
 class AnnotationUpdate(BaseModel):
-    color: str | None = None
+    color: str | None = Field(default=None, max_length=COLOR_MAX)
     comment: str | None = None
     rects: list[dict] | None = None
 
