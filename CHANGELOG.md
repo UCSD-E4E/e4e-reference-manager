@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.11.2...v1.12.0) (2026-10-20)
+
+
+### Features
+
+* deleted references go to the project trash for 30 days ([cd02033](https://github.com/UCSD-E4E/e4e-reference-manager/commit/cd0203337fd74bd1368eefaed9c9ff077ac992e6))
+* deleted references go to the project trash for 30 days ([31e4b5e](https://github.com/UCSD-E4E/e4e-reference-manager/commit/31e4b5eb26eb37e7b84cf361d2fd1ad480520be7))
+
 ## [1.11.2](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.11.1...v1.11.2) (2026-10-20)
 
 
