@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.7.0...v1.7.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* Find PDFs no longer 500s when one item in a full batch fails ([e6f0b6a](https://github.com/UCSD-E4E/e4e-reference-manager/commit/e6f0b6aa4475ed81c6f3ae98e823c560fdacea0c))
+* Find PDFs no longer 500s when one item in a full batch fails ([2a29c94](https://github.com/UCSD-E4E/e4e-reference-manager/commit/2a29c94b1126e8579afa0919fd435173a4088833))
+
 ## [1.7.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.6.0...v1.7.0) (2026-10-20)
 
 
