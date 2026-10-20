@@ -72,3 +72,29 @@ async def test_ingest_translation_server_error_is_502(client, library, monkeypat
     monkeypatch.setattr("app.routers.ingest.fetch_csl", boom)
     r = await client.post(f"/libraries/{library}/ingest", json={"query": "10.1/Z"})
     assert r.status_code == 502
+
+
+async def test_ingest_dedups_by_title_when_there_is_no_doi(client, library, monkeypatch):
+    """Books (ISBN) and many URLs resolve without a DOI: retrying must not add a copy."""
+    book = {"type": "book", "title": "Coral Reef Ecology", "issued": {"date-parts": [[2011]]}}
+
+    async def fake_fetch(query):
+        return [dict(book)]
+
+    monkeypatch.setattr("app.routers.ingest.fetch_csl", fake_fetch)
+    first = (await client.post(f"/libraries/{library}/ingest", json={"query": "isbn:1"})).json()
+    again = (await client.post(f"/libraries/{library}/ingest", json={"query": "isbn:1"})).json()
+    assert first["results"][0]["status"] == "created"
+    assert again["results"][0]["status"] == "duplicate"
+    assert again["results"][0]["item_id"] == first["results"][0]["item_id"]
+    total = (await client.get(f"/libraries/{library}/items")).json()["total"]
+    assert total == 1
+
+
+async def test_ingest_dedups_within_one_batch(client, library, monkeypatch):
+    async def fake_fetch(query):
+        return [dict(CSL_PAPER), dict(CSL_PAPER)]
+
+    monkeypatch.setattr("app.routers.ingest.fetch_csl", fake_fetch)
+    r = (await client.post(f"/libraries/{library}/ingest", json={"query": "x"})).json()
+    assert [x["status"] for x in r["results"]] == ["created", "duplicate"]

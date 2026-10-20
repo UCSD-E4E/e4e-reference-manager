@@ -1,4 +1,5 @@
 """Items CRUD, optimistic locking, and .bib import/export."""
+import pytest
 
 ARTICLE = {
     "type": "article-journal",
@@ -76,3 +77,17 @@ async def test_delete_item(client, library):
     ).json()
     assert (await client.delete(f"/items/{item['id']}")).status_code == 204
     assert (await client.get(f"/items/{item['id']}")).status_code == 404
+
+
+@pytest.mark.parametrize("params", [{"limit": 0}, {"limit": -1}, {"offset": -1}, {"limit": 201}])
+async def test_list_items_rejects_bad_paging(client, library, params):
+    r = await client.get(f"/libraries/{library}/items", params=params)
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("limit", [0, -1, 201])
+async def test_search_rejects_bad_limit(client, library, limit):
+    r = await client.get(
+        f"/libraries/{library}/search", params={"q": "x", "mode": "keyword", "limit": limit}
+    )
+    assert r.status_code == 422

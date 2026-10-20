@@ -1,7 +1,8 @@
 """Duplicate detection and merging within a project.
 
-One rule everywhere (bib import, "merge duplicates"): two items are the same paper when
-their normalized DOIs match, or — failing that — their normalized titles and years do.
+One rule everywhere (bib import, identifier import, "merge duplicates"): two items are the
+same paper when their normalized DOIs match, or — failing that — their normalized titles
+and years do.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ from collections.abc import Iterable
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .bibtex import year_from_csl
 from .ingest import normalize_doi, normalize_title
 from .models import Item, Note, item_collection, item_tag
 from .routers.items import apply_changes
@@ -24,6 +26,28 @@ def match_keys(doi: str | None, title: str | None, year: int | None) -> list[tup
     if nt := normalize_title(title):
         keys.append(("title", (nt, year)))
     return keys
+
+
+def csl_match_keys(csl: dict) -> list[tuple[str, object]]:
+    return match_keys(csl.get("DOI"), csl.get("title"), year_from_csl(csl))
+
+
+async def library_index(
+    session: AsyncSession, library_id: uuid.UUID
+) -> tuple[set[str], dict[tuple[str, object], uuid.UUID]]:
+    """A library's citation keys, and its items by duplicate-match key."""
+    rows = await session.execute(
+        select(Item.id, Item.citation_key, Item.doi, Item.title, Item.year).where(
+            Item.library_id == library_id
+        )
+    )
+    keys: set[str] = set()
+    owner: dict[tuple[str, object], uuid.UUID] = {}
+    for iid, key, doi, title, year in rows:
+        keys.add(key)
+        for k in match_keys(doi, title, year):
+            owner.setdefault(k, iid)
+    return keys, owner
 
 
 def find_duplicate_groups(items: Iterable[Item]) -> list[dict]:

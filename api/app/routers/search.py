@@ -56,7 +56,7 @@ async def search_library(
     session: AsyncSession = Depends(get_session),
     q: str = Query(..., min_length=1, description="Search query"),
     mode: str = Query("hybrid", pattern="^(keyword|semantic|hybrid)$"),
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
 ):
     if mode == "keyword":
         ids = await _keyword_ids(session, lib.id, q, limit)

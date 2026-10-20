@@ -224,6 +224,41 @@ curl -H "Authorization: Bearer refman_..." https://bib.krg.ucsd.edu/api/librarie
   tested locally. An invalid token gets a 401 and never falls back to the dev user.
 - The OpenAPI schema is at `/api/openapi.json` (interactive docs at `/api/docs`).
 
+## MCP server (AI agents)
+
+The API also serves an [MCP](https://modelcontextprotocol.io) server at
+`https://bib.krg.ucsd.edu/api/mcp`. MCP clients such as Claude Code use it to work with
+the library directly. Connect it with an API token:
+
+```bash
+claude mcp add --transport http refman https://bib.krg.ucsd.edu/api/mcp \
+  --header "Authorization: Bearer refman_..."
+```
+
+The **API tokens** page shows this command with your new token filled in.
+
+| Tool | What it does |
+|---|---|
+| `list_libraries` | Libraries you can access, with your access level |
+| `search_references` | Hybrid / keyword / semantic search within a library |
+| `list_references`, `get_reference` | Browse a library; one reference in full, with notes |
+| `list_collections`, `list_collection_references` | Browse collections |
+| `export_bibtex` | BibTeX for a library or a collection |
+| `add_reference` | Add by DOI, arXiv id, PMID, ISBN or URL (duplicates by DOI, or by title and year, are skipped) |
+| `import_bibtex` | Add BibTeX entries (duplicates are skipped; entries are validated) |
+| `add_note`, `create_collection`, `add_to_collection` | Annotate and organise |
+| `validate_reference` | Re-check a reference against Crossref/arXiv; replaces its stored verdict |
+
+- Every tool calls the REST API in-process with the caller's token. Permissions,
+  validation and the activity history are the same as in the web app.
+- Tools add and organise. None deletes anything or edits a reference's metadata. The one
+  update is `validate_reference`, which replaces the stored validation verdict and needs
+  edit access.
+- The server is stateless streamable HTTP with JSON responses (`app/mcp_server.py`).
+  Requests without a valid Bearer token get a 401, even with `REFMAN_DEV_AUTH`.
+- Local development: create a token in the local web app, then point the client at
+  `http://localhost:8000/mcp`.
+
 ## Production deployment (bib.krg.ucsd.edu)
 
 Production runs as the KRG Incus tenant `reference-manager`. krg-infra owns the platform
