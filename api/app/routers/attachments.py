@@ -1,7 +1,9 @@
+import asyncio
 import hashlib
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -10,11 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import oa_pdf
 from ..auth import get_current_user
 from ..db import get_session
-from ..deps import item_editor, library_access_level
+from ..deps import item_editor, library_access_level, library_editor
 from ..models import _ACCESS_RANK, Attachment, Item, Library, User
 from ..pdf import extract_pdf_text
-from ..schemas import AttachmentOut, FetchedPdf
+from ..schemas import AttachmentOut, FetchedPdf, LibraryPdfFetch
 from ..storage import download_bytes, presigned_get_url, upload_bytes
+
+logger = logging.getLogger("refman")
 
 router = APIRouter(tags=["attachments"])
 
@@ -92,15 +96,103 @@ async def fetch_pdf(
             "fetched; upload the PDF instead.",
         )
     data, source, url = found
+    att, created = await _attach_fetched_pdf(session, item, data)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return FetchedPdf(attachment=att, source=source, url=url)
+
+
+async def _attach_fetched_pdf(
+    session: AsyncSession, item: Item, data: bytes
+) -> tuple[Attachment, bool]:
+    """Attach downloaded PDF bytes unless the identical file is already on the item.
+    Returns (attachment, created)."""
     sha256 = hashlib.sha256(data).hexdigest()
     existing = next((a for a in item.attachments if a.sha256 == sha256), None)
     if existing is not None:
-        response.status_code = status.HTTP_200_OK
-        return FetchedPdf(attachment=existing, source=source, url=url)
+        return existing, False
     att = await _store_attachment(
         session, item, data, f"{item.citation_key or 'paper'}.pdf", "application/pdf"
     )
-    return FetchedPdf(attachment=att, source=source, url=url)
+    return att, True
+
+
+def _is_pdf(att: Attachment) -> bool:
+    """Browsers don't always send application/pdf (octet-stream, parameters, no type)."""
+    base = (att.content_type or "").split(";")[0].strip().lower()
+    return base == "application/pdf" or att.filename.lower().endswith(".pdf")
+
+
+FETCH_CONCURRENCY = 4
+
+
+@router.post("/libraries/{library_id}/fetch-pdfs", response_model=LibraryPdfFetch)
+async def fetch_pdfs(
+    after: uuid.UUID | None = None,
+    limit: int = Query(10, ge=1, le=50),
+    lib: Library = Depends(library_editor),
+    session: AsyncSession = Depends(get_session),
+):
+    """Find and attach an open-access PDF for one batch of the library's items (ordered
+    by id, after the `after` cursor). Items that already have a PDF are skipped, so it's
+    safe to re-run. Batches keep each request short; the client loops on `next_after`.
+
+    Lookups/downloads run a few at a time; DB writes go one at a time (one session), and
+    each item commits on its own so one failure doesn't lose the others."""
+    query = select(Item).where(Item.library_id == lib.id).order_by(Item.id).limit(limit)
+    if after is not None:
+        query = query.where(Item.id > after)
+    items = list((await session.execute(query)).scalars().all())
+
+    counts = dict.fromkeys(
+        ("attached", "already_had_pdf", "not_found", "no_identifier", "failed"), 0
+    )
+    # Snapshot what the network step needs: a failed item's rollback expires every
+    # loaded object, and async sessions can't lazily refresh them.
+    todo: list[tuple[uuid.UUID, dict]] = []
+    for item in items:
+        csl = item.csl_json or {}
+        if any(_is_pdf(a) for a in item.attachments):
+            counts["already_had_pdf"] += 1
+        elif not oa_pdf.has_identifier(csl):
+            counts["no_identifier"] += 1
+        else:
+            todo.append((item.id, csl))
+
+    fetch_slots = asyncio.Semaphore(FETCH_CONCURRENCY)
+    db_lock = asyncio.Lock()
+
+    async def process(item_id: uuid.UUID, csl: dict) -> None:
+        async with fetch_slots:
+            try:
+                found = await oa_pdf.fetch_open_access_pdf(csl)
+            except Exception:
+                logger.exception("Open-access lookup failed for item %s", item_id)
+                counts["failed"] += 1
+                return
+            if found is None:
+                counts["not_found"] += 1
+                return
+            async with db_lock:
+                try:
+                    # Fresh copy: picks up attachments added since the batch started
+                    # (e.g. a concurrent run) so the sha256 dedupe sees them.
+                    item = await session.get(Item, item_id, populate_existing=True)
+                    if item is None:  # deleted meanwhile
+                        return
+                    _att, created = await _attach_fetched_pdf(session, item, found[0])
+                    counts["attached" if created else "already_had_pdf"] += 1
+                except Exception:
+                    logger.exception("Storing fetched PDF failed for item %s", item_id)
+                    await session.rollback()
+                    counts["failed"] += 1
+
+    await asyncio.gather(*(process(item_id, csl) for item_id, csl in todo))
+    return LibraryPdfFetch(
+        checked=len(items),
+        **counts,
+        next_after=items[-1].id if len(items) == limit else None,
+    )
 
 
 async def _owned_attachment(

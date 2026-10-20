@@ -75,6 +75,11 @@ async def _unpaywall_pdf_urls(doi: str) -> list[str]:
     return urls
 
 
+def has_identifier(csl: dict) -> bool:
+    """Whether there's anything to look up (a DOI or an arXiv id)."""
+    return bool(normalize_doi(csl.get("DOI")) or extract_arxiv_id(csl))
+
+
 async def find_candidates(csl: dict) -> list[tuple[str, str]]:
     """(source, pdf_url) pairs to try, best first."""
     out: list[tuple[str, str]] = []

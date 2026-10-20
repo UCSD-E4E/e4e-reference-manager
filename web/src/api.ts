@@ -15,6 +15,7 @@ import type {
   Item,
   ItemList,
   Library,
+  LibraryPdfFetch,
   Note,
   PastePreviewEntry,
   PdfValidationResult,
@@ -168,6 +169,12 @@ export const api = {
   // Find a legal open-access copy online (Unpaywall, arXiv) and attach it.
   fetchPdf: (itemId: string) =>
     req<FetchedPdf>(`/items/${itemId}/fetch-pdf`, { method: "POST" }),
+  // One batch of a library-wide open-access PDF fetch; loop on next_after.
+  fetchLibraryPdfs: (libId: string, after: string | null) =>
+    req<LibraryPdfFetch>(
+      `/libraries/${libId}/fetch-pdfs${after ? `?after=${encodeURIComponent(after)}` : ""}`,
+      { method: "POST" },
+    ),
   uploadAttachment: (itemId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);

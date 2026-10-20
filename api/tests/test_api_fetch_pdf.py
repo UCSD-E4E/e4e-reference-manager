@@ -1,6 +1,8 @@
 """Find a legal open-access PDF online (Unpaywall by DOI, then arXiv) and attach it.
 
 No network: the HTTP client is an httpx.MockTransport and DNS resolution is stubbed."""
+import hashlib
+
 import fitz  # PyMuPDF
 import httpx
 import pytest
@@ -138,3 +140,115 @@ async def test_nothing_open_access_is_a_clear_404(client, library, net):
 async def test_arxiv_doi_form_is_recognised(net):
     got = await oa.find_candidates({"DOI": "10.48550/arXiv.2101.00001"})
     assert ("arxiv", "https://arxiv.org/pdf/2101.00001") in got
+
+
+# ---------- library-wide fetch ----------
+
+
+def _counts(body: dict) -> dict:
+    return {k: v for k, v in body.items() if k != "next_after"}
+
+
+async def test_fetch_pdfs_for_whole_library(client, library, net):
+    net["https://arxiv.org/pdf/2101.00001"] = (200, PDF, {})
+    net.update(_unpaywall("10.1/paywalled"))  # no OA locations
+    await _add(client, library, URL="https://arxiv.org/abs/2101.00001", title="Has OA")
+    await _add(client, library, DOI="10.1/paywalled", title="No OA")
+    await _add(client, library, title="A book with no identifiers")
+
+    r = await client.post(f"/libraries/{library}/fetch-pdfs")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["next_after"] is None  # everything fit in one batch
+    assert _counts(body) == {
+        "checked": 3,
+        "attached": 1,
+        "already_had_pdf": 0,
+        "not_found": 1,
+        "no_identifier": 1,  # nothing to look up isn't the same as paywalled
+        "failed": 0,
+    }
+
+
+async def test_fetch_pdfs_skips_items_that_already_have_a_pdf(client, library, net):
+    net["https://arxiv.org/pdf/2101.00001"] = (200, PDF, {})
+    await _add(client, library, URL="https://arxiv.org/abs/2101.00001", title="Has OA")
+
+    first = await client.post(f"/libraries/{library}/fetch-pdfs")
+    assert first.json()["attached"] == 1
+    # Second pass: the PDF is already attached, so it is counted as skipped, not refetched.
+    second = (await client.post(f"/libraries/{library}/fetch-pdfs")).json()
+    assert second["already_had_pdf"] == 1 and second["attached"] == 0
+
+
+async def test_fetch_pdfs_recognises_pdfs_uploaded_with_a_generic_mime_type(
+    client, library, net
+):
+    net["https://arxiv.org/pdf/2101.00001"] = (200, PDF, {})
+    item = await _add(client, library, URL="https://arxiv.org/abs/2101.00001")
+    up = await client.post(
+        f"/items/{item['id']}/attachments",
+        files={"file": ("Paper.PDF", _pdf("uploaded"), "application/octet-stream")},
+    )
+    assert up.status_code == 201
+
+    body = (await client.post(f"/libraries/{library}/fetch-pdfs")).json()
+    assert body["already_had_pdf"] == 1 and body["attached"] == 0
+
+
+async def test_fetch_pdfs_pages_through_the_library_with_a_cursor(client, library, net):
+    for n in (1, 2, 3):
+        url = f"https://arxiv.org/pdf/2101.0000{n}"
+        net[url] = (200, _pdf(f"paper {n}"), {})
+        await _add(client, library, URL=f"https://arxiv.org/abs/2101.0000{n}")
+
+    seen, after = 0, None
+    for _ in range(5):
+        params = {"limit": 2, **({"after": after} if after else {})}
+        body = (await client.post(f"/libraries/{library}/fetch-pdfs", params=params)).json()
+        assert body["checked"] <= 2
+        seen += body["checked"]
+        after = body["next_after"]
+        if after is None:
+            break
+    assert seen == 3 and after is None
+    items = (await client.get(f"/libraries/{library}/items")).json()["items"]
+    assert all(len(it["attachments"]) == 1 for it in items)
+
+
+async def test_fetch_pdfs_one_failure_does_not_abort_the_batch(
+    client, library, net, monkeypatch
+):
+    good = _pdf("good")  # build once: PyMuPDF output isn't byte-identical across calls
+    net["https://arxiv.org/pdf/2101.00001"] = (200, good, {})
+    net["https://arxiv.org/pdf/2101.00002"] = (200, _pdf("bad"), {})
+    await _add(client, library, URL="https://arxiv.org/abs/2101.00001")
+    await _add(client, library, URL="https://arxiv.org/abs/2101.00002")
+
+    good_sha = hashlib.sha256(good).hexdigest()
+
+    def flaky_upload(key, *a, **k):
+        if not key.endswith(good_sha):
+            raise RuntimeError("object storage hiccup")
+
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", flaky_upload)
+    body = (await client.post(f"/libraries/{library}/fetch-pdfs")).json()
+    assert body["attached"] == 1 and body["failed"] == 1 and body["checked"] == 2
+
+
+async def test_fetch_pdfs_requires_edit_access(client, make_user, login, net):
+    alice = await make_user("alice@x")
+    bob = await make_user("bob@x")
+
+    login(bob)
+    group = (await client.post("/groups", json={"slug": "g", "name": "G"})).json()
+
+    login(alice)
+    lib = (await client.post("/libraries", json={"name": "Alice lib"})).json()["id"]
+    await client.post(
+        f"/libraries/{lib}/shares", json={"group_id": group["id"], "access_level": "view"}
+    )
+
+    login(bob)
+    r = await client.post(f"/libraries/{lib}/fetch-pdfs")
+    assert r.status_code == 403
