@@ -146,3 +146,11 @@ async def test_attachment_without_text(client, library, monkeypatch):
     body = (await client.get(f"/attachments/{r.json()['id']}/text")).json()
     assert body["text"] == ""
     assert body["total_chars"] == 0
+
+
+def test_extracted_text_has_no_nul_bytes():
+    """LaTeX-built PDFs can extract with NULs (font encodings); Postgres text can't store
+    them, which made attaching such a PDF a 500."""
+    out = extract_pdf_text(_make_pdf("fish\x00sense"))
+    assert "\x00" not in out
+    assert "fishsense" in out

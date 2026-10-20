@@ -23,4 +23,6 @@ def extract_pdf_text(data: bytes) -> str:
     except Exception as exc:  # corrupt / not a PDF — don't block the upload
         logger.warning("PDF text extraction failed: %s", exc)
         return ""
-    return text.strip()
+    # Font encodings in some (often LaTeX-built) PDFs extract as NUL bytes, which a
+    # Postgres text column rejects: drop them, or attaching the PDF fails.
+    return text.replace("\x00", "").strip()

@@ -148,3 +148,13 @@ async def test_only_a_hash_of_the_secret_is_stored(client, library, db):
     secret = link["url"].rsplit("/", 1)[1]
     row = (await db.execute(select(PdfUploadLink))).scalar_one()
     assert secret not in row.token_hash
+
+
+async def test_pdf_whose_text_contains_nul_bytes_uploads(client, library):
+    """Regression: a 2.4 MB LaTeX-built paper 500'd on upload (NUL in the extracted text)."""
+    item_id = await _item(client, library)
+    link = await _link(client, item_id)
+    r = await _upload(client, link["url"], _pdf("FishCamera\x00 measures fish"))
+    assert r.status_code == 201
+    text = (await client.get(f"/attachments/{r.json()['id']}/text")).json()["text"]
+    assert "FishCamera" in text and "\x00" not in text
