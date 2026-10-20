@@ -105,9 +105,9 @@ export default function Tokens() {
       <div className="card">
         <strong>Connect an AI agent (MCP)</strong>
         <p className="muted">
-          Claude Code and other MCP clients can search, add, annotate and validate references
-          through the MCP server at <code>{MCP_URL}</code>, using a token from this page. Agents
-          can't delete anything or edit a reference's metadata.
+          Claude Code and other MCP clients can search, add, annotate and validate references,
+          and read their PDFs, through the MCP server at <code>{MCP_URL}</code>, using a token
+          from this page. Agents can't delete anything or edit a reference's metadata.
         </p>
         {created ? (
           <>

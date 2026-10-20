@@ -16,7 +16,7 @@ import app.validation as v
 from app.auth import get_auth_context, new_api_token
 from app.main import app
 from app.mcp_server import mcp_endpoint
-from app.models import Library
+from app.models import Attachment, Item, Library
 
 EXPECTED_TOOLS = {
     "list_libraries",
@@ -32,6 +32,10 @@ EXPECTED_TOOLS = {
     "create_collection",
     "add_to_collection",
     "validate_reference",
+    "get_pdf_text",
+    "get_pdf_url",
+    "find_pdf",
+    "find_library_pdfs",
 }
 
 ATTENTION = (
@@ -344,7 +348,120 @@ async def test_tool_annotations_are_honest(agent):
         "export_bibtex",
         "list_collections",
         "list_collection_references",
+        "get_pdf_text",
+        "get_pdf_url",
     }
     # validate_reference overwrites the stored verdict: it is an update, not a pure add.
     assert tools["validate_reference"].destructive_hint is True
     assert not any(a.destructive_hint for n, a in tools.items() if n != "validate_reference")
+
+
+# ── PDFs ────────────────────────────────────────────────────────────────────────────────
+
+
+async def _paper_with_pdf(db, alice, text="Stereo cameras measure fish length underwater."):
+    lib = Library(name="FishSense", owner_id=alice.id)
+    db.add(lib)
+    await db.flush()
+    item = Item(
+        library_id=lib.id,
+        citation_key="fish2024",
+        type="article-journal",
+        csl_json={"type": "article-journal", "title": "Measuring Fish", "DOI": "10.1/fish"},
+        title="Measuring Fish",
+        doi="10.1/fish",
+    )
+    db.add(item)
+    await db.flush()
+    att = Attachment(
+        item_id=item.id,
+        filename="fish2024.pdf",
+        content_type="application/pdf",
+        size=1234,
+        sha256="0" * 64,
+        storage_key=f"{lib.id}/{item.id}/abc",
+        text=text,
+    )
+    db.add(att)
+    await db.commit()
+    return str(lib.id), str(item.id), str(att.id)
+
+
+async def test_get_reference_lists_pdfs(agent, db, alice):
+    lib_id, item_id, att_id = await _paper_with_pdf(db, alice)
+    ref = await _call(agent, "get_reference", reference_id=item_id)
+    assert ref["attachments"] == [
+        {"id": att_id, "filename": "fish2024.pdf", "content_type": "application/pdf", "size": 1234}
+    ]
+    [summary] = (await _call(agent, "list_references", library_id=lib_id))["references"]
+    assert summary["has_pdf"] is True
+
+
+async def test_get_pdf_text_pages(agent, db, alice):
+    _, _, att_id = await _paper_with_pdf(db, alice, text="x" * 25)
+    first = await _call(agent, "get_pdf_text", attachment_id=att_id, max_chars=10)
+    assert first == {"text": "x" * 10, "offset": 0, "total_chars": 25, "next_offset": 10}
+    last = await _call(agent, "get_pdf_text", attachment_id=att_id, offset=20, max_chars=10)
+    assert last["text"] == "x" * 5
+    assert last["next_offset"] is None
+
+
+async def test_get_pdf_url(agent, db, alice, monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.attachments.presigned_get_url",
+        lambda key, name=None: f"https://s3.example/{key}?sig",
+    )
+    _, _, att_id = await _paper_with_pdf(db, alice)
+    out = await _call(agent, "get_pdf_url", attachment_id=att_id)
+    assert out["url"].startswith("https://s3.example/")
+    assert out["content_type"] == "application/pdf"
+    assert out["expires_in_seconds"] > 0
+
+
+async def test_find_pdf(agent, db, alice, monkeypatch):
+    import fitz
+
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), "Open access fish paper")
+    pdf = doc.tobytes()
+
+    async def found(csl):
+        return pdf, "unpaywall", "https://oa.example/fish.pdf"
+
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", lambda *a, **k: None)
+    monkeypatch.setattr("app.oa_pdf.fetch_open_access_pdf", found)
+    lib = Library(name="L", owner_id=alice.id)
+    db.add(lib)
+    await db.flush()
+    item = Item(library_id=lib.id, citation_key="k", type="article-journal",
+                csl_json={"DOI": "10.1/oa"}, title="OA", doi="10.1/oa")
+    db.add(item)
+    await db.commit()
+
+    out = await _call(agent, "find_pdf", reference_id=str(item.id))
+    assert out["source"] == "unpaywall"
+    assert out["attachment"]["filename"].endswith(".pdf")
+    text = await _call(agent, "get_pdf_text", attachment_id=out["attachment"]["id"])
+    assert "Open access fish paper" in text["text"]
+
+
+async def test_find_pdf_not_found_is_a_tool_error(agent, db, alice, monkeypatch):
+    async def nothing(csl):
+        return None
+
+    monkeypatch.setattr("app.oa_pdf.fetch_open_access_pdf", nothing)
+    _, item_id, _ = await _paper_with_pdf(db, alice)
+    err = await _call_error(agent, "find_pdf", reference_id=item_id)
+    assert "No open-access PDF" in err
+
+
+async def test_find_library_pdfs(agent, db, alice, monkeypatch):
+    async def nothing(csl):
+        return None
+
+    monkeypatch.setattr("app.oa_pdf.fetch_open_access_pdf", nothing)
+    lib_id, _, _ = await _paper_with_pdf(db, alice)
+    out = await _call(agent, "find_library_pdfs", library_id=lib_id)
+    assert out["checked"] == 1
+    assert out["already_had_pdf"] == 1
+    assert out["next_after"] is None
