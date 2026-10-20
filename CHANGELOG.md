@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.15.2](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.1...v1.15.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* cap uploads, harden .bib import/export, DOI validation and attachment serving ([91e014a](https://github.com/UCSD-E4E/e4e-reference-manager/commit/91e014a8e37302404aaa3fe3ea4192ed5cee617c))
+* cap uploads, harden .bib import/export, fix DOI validation and attachment serving ([53797e6](https://github.com/UCSD-E4E/e4e-reference-manager/commit/53797e6a093a798ec0c280338ecd6dbad180da9c))
+* close SSRF gaps in PDF fetch and URL ingest; harden OA PDF lookup ([bf62107](https://github.com/UCSD-E4E/e4e-reference-manager/commit/bf6210786ae9481baac1b9049a86fe5137382ee8))
+* pin PDF downloads to the validated IP and refuse internal URLs for ingest ([fb3caa3](https://github.com/UCSD-E4E/e4e-reference-manager/commit/fb3caa308dd3c220e776a2ecb4047d589cd92523))
+* prefer IPv4 when pinning a PDF download's address ([151e4ac](https://github.com/UCSD-E4E/e4e-reference-manager/commit/151e4acf5c5f703890374a8cd0224a02018fe03b))
+* revoke stale access and harden cookie auth ([077a5cc](https://github.com/UCSD-E4E/e4e-reference-manager/commit/077a5cc9c41f3e6dbe2226538f3603f1ab44b9a8))
+* stop concurrent and stale item edits from overwriting newer data ([b2aff6f](https://github.com/UCSD-E4E/e4e-reference-manager/commit/b2aff6f687514fd25fe8307ba1a12d45b7f7b315))
+
 ## [1.15.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.0...v1.15.1) (2026-10-20)
 
 
