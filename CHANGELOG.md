@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.6.0...v1.7.0) (2026-10-20)
+
+
+### Features
+
+* find open-access PDFs for every reference in a project ([9258a7b](https://github.com/UCSD-E4E/e4e-reference-manager/commit/9258a7b4f13b666a64eb9f8729bb7fce35acec86))
+* find open-access PDFs for every reference in a project ([5acde59](https://github.com/UCSD-E4E/e4e-reference-manager/commit/5acde59be9875a0f42a2087440848cc2a1cae2c8))
+
 ## [1.6.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.5.1...v1.6.0) (2026-10-12)
 
 
