@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.11.0...v1.11.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* build our own amd64 translation-server image ([5106fef](https://github.com/UCSD-E4E/e4e-reference-manager/commit/5106fefc2d15e234430225e315ed4f554bdc8e9a))
+* build our own amd64 translation-server image ([70ce2d0](https://github.com/UCSD-E4E/e4e-reference-manager/commit/70ce2d0b0040ab2aa22ff7aabc86905cf566ddc7))
+
 ## [1.11.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.10.0...v1.11.0) (2026-10-20)
 
 
