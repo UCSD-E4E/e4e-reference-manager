@@ -2,14 +2,16 @@
 compare titles to catch fabricated DOIs / made-up papers.
 
 Strategy:
-- DOI present  -> Crossref `/works/{doi}` (DOI 404 = not_found; title mismatch = the DOI
-                  resolves to a *different* real paper, which is the classic AI-fabrication
-                  signature).
+- DOI present  -> Crossref `/works/{doi}`, then DataCite (arXiv's 10.48550 DOIs, Zenodo,
+                  datasets) if Crossref doesn't hold it. Unknown to both = not_found; a
+                  title mismatch = the DOI resolves to a *different* real paper, which is
+                  the classic AI-fabrication signature.
 - arXiv id     -> arXiv API; same comparison.
 - Otherwise    -> Crossref title search; verified only if the top hit's title matches.
 
-All HTTP is best-effort and monkeypatched in tests; failures yield a `not_found` /
-`unverifiable` verdict rather than 500ing the request."""
+All HTTP is monkeypatched in tests. A registry that can't be reached gives
+`unverifiable` (an outage says nothing about whether a paper exists), never a 500 and
+never `not_found`."""
 from __future__ import annotations
 
 import json
@@ -27,6 +29,9 @@ from .ingest import normalize_doi
 logger = logging.getLogger("refman")
 
 CROSSREF_URL = "https://api.crossref.org/works"
+# DOIs Crossref doesn't hold (arXiv's 10.48550/arXiv.*, Zenodo, figshare, datasets...) are
+# mostly registered with DataCite.
+DATACITE_URL = "https://api.datacite.org/dois"
 ARXIV_URL = "http://export.arxiv.org/api/query"
 # Polite-pool UA per Crossref guidance (https://api.crossref.org swagger).
 _UA = "e4e-reference-manager (mailto:ccrutchf@ucsd.edu)"
@@ -103,20 +108,49 @@ def extract_arxiv_id(csl: dict) -> str | None:
 
 # ---------- HTTP (best-effort; tests monkeypatch these) ----------
 
-async def crossref_lookup(doi: str) -> dict | None:
-    if not doi:
-        return None
+
+class RegistryUnavailable(Exception):
+    """A registry couldn't be asked (network error, 5xx): unlike a 404, this says nothing
+    about whether the DOI exists."""
+
+
+async def _registry_get(registry: str, url: str) -> dict | None:
+    """GET a registry's JSON record: None on 404 (no such DOI), RegistryUnavailable if the
+    registry couldn't answer."""
     try:
         async with httpx.AsyncClient(timeout=20.0, headers=_HEADERS) as client:
-            # DOIs may contain '#', '?', '%'...: quote them so they stay in the path.
-            r = await client.get(f"{CROSSREF_URL}/{quote(doi, safe='/')}")
+            r = await client.get(url)
         if r.status_code == 404:
             return None
         r.raise_for_status()
-        return parse_crossref_work(r.json())
+        return r.json()
     except (httpx.HTTPError, ValueError) as exc:
-        logger.warning("Crossref lookup failed for %s: %s", doi, exc)
+        logger.warning("%s lookup failed for %s: %s", registry, url, exc)
+        raise RegistryUnavailable(f"{registry}: {exc}") from exc
+
+
+async def crossref_lookup(doi: str) -> dict | None:
+    if not doi:
         return None
+    # DOIs may contain '#', '?', '%'...: quote them so they stay in the path.
+    js = await _registry_get("Crossref", f"{CROSSREF_URL}/{quote(doi, safe='/')}")
+    return parse_crossref_work(js) if js is not None else None
+
+
+async def datacite_lookup(doi: str) -> dict | None:
+    if not doi:
+        return None
+    js = await _registry_get("DataCite", f"{DATACITE_URL}/{quote(doi, safe='/')}")
+    if js is None:
+        return None
+    attrs = (js.get("data") or {}).get("attributes") or {}
+    titles = attrs.get("titles") or [{}]
+    year = attrs.get("publicationYear")
+    return {
+        "title": titles[0].get("title", ""),
+        "DOI": doi,
+        "year": int(year) if str(year or "").isdigit() else None,
+    }
 
 
 async def crossref_search(title: str, authors: list | None = None) -> dict | None:
@@ -166,7 +200,7 @@ def _verdict(
 ) -> dict:
     return {
         "status": status,  # verified | metadata_mismatch | not_found | unverifiable
-        "source": source,  # crossref | arxiv | none
+        "source": source,  # crossref | datacite | arxiv | none
         "matched_title": matched_title,
         "title_similarity": title_similarity_value,
         "notes": notes,
@@ -181,12 +215,22 @@ async def validate_item_csl(csl: dict) -> dict:
     doi = normalize_doi(raw_doi if isinstance(raw_doi, str) else None) or ""
 
     if doi:
-        work = await crossref_lookup(doi)
+        # Crossref holds most journal/conference DOIs; DataCite holds arXiv's, Zenodo's and
+        # other repositories'. A DOI unknown to both is not_found; a registry that can't
+        # be reached proves nothing either way.
+        try:
+            work, source = await crossref_lookup(doi), "crossref"
+            if work is None:
+                work, source = await datacite_lookup(doi), "datacite"
+        except RegistryUnavailable as exc:
+            return _verdict(
+                "unverifiable", "none", notes=f"Couldn't reach a DOI registry ({exc})"
+            )
         if work is None:
             return _verdict(
                 "not_found",
                 "crossref",
-                notes=f"DOI {doi} did not resolve at Crossref",
+                notes=f"DOI {doi} is registered with neither Crossref nor DataCite",
             )
         sim = title_similarity(title, work.get("title", ""))
         status = "verified" if sim >= TITLE_MATCH_THRESHOLD else "metadata_mismatch"
@@ -197,7 +241,7 @@ async def validate_item_csl(csl: dict) -> dict:
         )
         return _verdict(
             status,
-            "crossref",
+            source,
             matched_title=work.get("title"),
             title_similarity_value=sim,
             notes=notes,

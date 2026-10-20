@@ -1,9 +1,9 @@
 """Phase 5: anti-hallucination validation against canonical registrars.
 
-For items with a DOI we hit Crossref; arXiv IDs hit the arXiv API; bare metadata falls
-back to a Crossref title/author search. The registrar's title is compared to the item's
-to catch fabricated DOIs that happen to resolve to a *different* real paper. All HTTP
-is monkeypatched in tests."""
+For items with a DOI we hit Crossref, then DataCite; arXiv IDs hit the arXiv API; bare
+metadata falls back to a Crossref title/author search. The registrar's title is compared
+to the item's to catch fabricated DOIs that happen to resolve to a *different* real
+paper. All HTTP is monkeypatched in tests."""
 import pytest
 
 import app.validation as v
@@ -13,6 +13,9 @@ from app.validation import (
     parse_crossref_work,
     title_similarity,
 )
+
+REAL_CROSSREF = v.crossref_lookup  # captured before any test patches them
+REAL_DATACITE = getattr(v, "datacite_lookup", None)
 
 
 # ---------- pure helpers ----------
@@ -222,3 +225,102 @@ async def test_crossref_lookup_quotes_the_doi_in_the_path(monkeypatch):
     (url,) = seen
     assert url.raw_path == b"/works/10.1/a%23b%3Fc"
     assert not url.query and not url.fragment
+
+
+# ---------- DOIs Crossref doesn't hold (DataCite: arXiv, Zenodo, ...) ----------
+
+SAM3 = "SAM 3: Segment Anything with Concepts"
+
+
+def _stub_datacite(monkeypatch, doi_to_work):
+    async def fake(doi):
+        return doi_to_work.get((doi or "").lower())
+
+    monkeypatch.setattr(v, "datacite_lookup", fake)
+
+
+async def test_arxiv_doi_is_verified_through_datacite(monkeypatch):
+    """arXiv's 10.48550 DOIs are registered with DataCite, not Crossref: a real arXiv
+    paper must not be reported as not_found (i.e. possibly fabricated)."""
+    _stub_crossref(monkeypatch, {})
+    _stub_datacite(monkeypatch, {"10.48550/arxiv.2511.16719": {"title": SAM3}})
+    out = await v.validate_item_csl({"DOI": "10.48550/arXiv.2511.16719", "title": SAM3})
+    assert out["status"] == "verified"
+    assert out["source"] == "datacite"
+    assert out["matched_title"] == SAM3
+
+
+async def test_datacite_doi_with_a_different_title_is_a_mismatch(monkeypatch):
+    _stub_crossref(monkeypatch, {})
+    _stub_datacite(monkeypatch, {"10.5281/zenodo.1": {"title": "A Coral Dataset"}})
+    out = await v.validate_item_csl({"DOI": "10.5281/zenodo.1", "title": "Fish Lengths"})
+    assert out["status"] == "metadata_mismatch"
+    assert out["source"] == "datacite"
+
+
+async def test_doi_in_neither_registry_is_not_found(monkeypatch):
+    _stub_crossref(monkeypatch, {})
+    _stub_datacite(monkeypatch, {})
+    out = await v.validate_item_csl({"DOI": "10.fake/missing", "title": "Anything"})
+    assert out["status"] == "not_found"
+    assert "Crossref" in out["notes"] and "DataCite" in out["notes"]
+
+
+@pytest.mark.parametrize("down", ["crossref", "datacite"])
+async def test_an_unreachable_registry_is_unverifiable_not_not_found(monkeypatch, down):
+    """An outage says nothing about whether the paper exists."""
+
+    async def unavailable(doi):
+        raise v.RegistryUnavailable("timed out")
+
+    _stub_crossref(monkeypatch, {})
+    _stub_datacite(monkeypatch, {})
+    monkeypatch.setattr(v, f"{down}_lookup", unavailable)
+    out = await v.validate_item_csl({"DOI": "10.1/x", "title": "Reef Paper"})
+    assert out["status"] == "unverifiable"
+
+
+def _mock_http(monkeypatch, handler):
+    import httpx
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        v.httpx, "AsyncClient", lambda **k: real(transport=httpx.MockTransport(handler), **k)
+    )
+
+
+@pytest.mark.parametrize(
+    "lookup,url", [(REAL_CROSSREF, "api.crossref.org"), (REAL_DATACITE, "api.datacite.org")]
+)
+async def test_lookups_tell_missing_from_unavailable(monkeypatch, lookup, url):
+    import httpx
+
+    status = {"code": 404}
+
+    def handler(request):
+        assert request.url.host == url
+        if status["code"] == "boom":
+            raise httpx.ConnectError("down", request=request)
+        return httpx.Response(status["code"], json={})
+
+    _mock_http(monkeypatch, handler)
+    assert await lookup("10.1/x") is None  # 404: no such DOI
+    for status["code"] in (500, 503, "boom"):
+        with pytest.raises(v.RegistryUnavailable):
+            await lookup("10.1/x")
+
+
+async def test_datacite_lookup_reads_the_title(monkeypatch):
+    import httpx
+
+    seen = []
+
+    def handler(request):
+        seen.append(request.url)
+        body = {"data": {"attributes": {"titles": [{"title": SAM3}], "publicationYear": 2025}}}
+        return httpx.Response(200, json=body)
+
+    _mock_http(monkeypatch, handler)
+    work = await REAL_DATACITE("10.48550/arXiv.2511.16719")
+    assert work == {"title": SAM3, "DOI": "10.48550/arXiv.2511.16719", "year": 2025}
+    assert seen[0].raw_path == b"/dois/10.48550/arXiv.2511.16719"

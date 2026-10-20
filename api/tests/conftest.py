@@ -72,6 +72,18 @@ async def db(engine):
         yield session
 
 
+@pytest.fixture(autouse=True)
+def _no_datacite(monkeypatch):
+    """Keep tests offline: DataCite (the fallback for DOIs Crossref doesn't hold) knows
+    no DOI unless a test stubs it. Crossref is stubbed per test, as before."""
+    import app.validation as validation
+
+    async def unknown(doi):
+        return None
+
+    monkeypatch.setattr(validation, "datacite_lookup", unknown, raising=False)
+
+
 @pytest.fixture
 def _auth_state():
     return {"user": None}
