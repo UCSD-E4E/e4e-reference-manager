@@ -11,12 +11,20 @@ const EXPIRY_OPTIONS: { label: string; days: number }[] = [
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : "—");
 const isExpired = (t: ApiToken) => new Date(t.expires_at) <= new Date();
 
+// API_URL is relative ("/api") in production; agents need the absolute address.
+const API_BASE = new URL(API_URL, window.location.href).href.replace(/\/$/, "");
+const MCP_URL = `${API_BASE}/mcp`;
+const mcpCommand = (token: string) =>
+  `claude mcp add --transport http refman ${MCP_URL} --header "Authorization: Bearer ${token}"`;
+
+type Copyable = "token" | "command";
+
 export default function Tokens() {
   const [tokens, setTokens] = useState<ApiToken[]>([]);
   const [name, setName] = useState("");
   const [expiry, setExpiry] = useState(1);
   const [created, setCreated] = useState<ApiTokenCreated | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<Copyable | null>(null);
   const [err, setErr] = useState("");
 
   const load = () => api.listTokens().then(setTokens).catch((e) => setErr(String(e)));
@@ -30,7 +38,7 @@ export default function Tokens() {
     setErr("");
     try {
       setCreated(await api.createToken(name.trim(), EXPIRY_OPTIONS[expiry].days));
-      setCopied(false);
+      setCopied(null);
       setName("");
       load();
     } catch (e) {
@@ -50,13 +58,12 @@ export default function Tokens() {
     }
   };
 
-  const copy = async () => {
-    if (!created) return;
+  const copy = async (text: string, what: Copyable) => {
     try {
-      await navigator.clipboard.writeText(created.token);
-      setCopied(true);
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
     } catch {
-      /* clipboard blocked: the token is still selectable */
+      /* clipboard blocked: the text is still selectable */
     }
   };
 
@@ -65,7 +72,7 @@ export default function Tokens() {
       <h1>API tokens</h1>
       <p className="muted">
         Tokens let scripts and AI agents use the API as you, with your library permissions.
-        Send one as <code>Authorization: Bearer &lt;token&gt;</code> to <code>{API_URL}</code>.
+        Send one as <code>Authorization: Bearer &lt;token&gt;</code> to <code>{API_BASE}</code>.
       </p>
       {err && <p className="error">{err}</p>}
       <form className="card row" onSubmit={create}>
@@ -89,12 +96,35 @@ export default function Tokens() {
           <strong>Copy your new token now. It won't be shown again.</strong>
           <div className="row" style={{ marginTop: "0.5rem" }}>
             <input className="grow" readOnly value={created.token} onFocus={(e) => e.target.select()} />
-            <button type="button" onClick={copy}>
-              {copied ? "Copied" : "Copy"}
+            <button type="button" onClick={() => copy(created.token, "token")}>
+              {copied === "token" ? "Copied" : "Copy"}
             </button>
           </div>
         </div>
       )}
+      <div className="card">
+        <strong>Connect an AI agent (MCP)</strong>
+        <p className="muted">
+          Claude Code and other MCP clients can search, add, annotate and validate references
+          through the MCP server at <code>{MCP_URL}</code>, using a token from this page. It
+          never deletes anything. In Claude Code, run:
+        </p>
+        <div className="row">
+          <input
+            className="grow"
+            readOnly
+            value={mcpCommand(created?.token ?? "<token>")}
+            onFocus={(e) => e.target.select()}
+          />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => copy(mcpCommand(created?.token ?? "<token>"), "command")}
+          >
+            {copied === "command" ? "Copied" : "Copy"}
+          </button>
+        </div>
+      </div>
       {tokens.length === 0 && <p className="muted">No tokens yet.</p>}
       {tokens.length > 0 && (
         <div className="card">

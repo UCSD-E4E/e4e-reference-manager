@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import __version__
 from .auth import register_oidc
 from .config import Settings, get_settings
+from .mcp_server import mcp_endpoint, mount_mcp
 from .routers import (
     annotations,
     attachments,
@@ -45,7 +46,8 @@ async def lifespan(app: FastAPI):
         logger.info("Authentik OIDC registered")
     elif not settings.dev_auth:
         logger.warning("OIDC not configured and dev_auth is off — logins will fail")
-    yield
+    async with mcp_endpoint.running():
+        yield
 
 
 def session_cookie_https_only(s: Settings) -> bool:
@@ -84,3 +86,4 @@ app.include_router(notes.router)
 app.include_router(ingest.router)
 app.include_router(ml.router)
 app.include_router(validate.router)
+mount_mcp(app)
