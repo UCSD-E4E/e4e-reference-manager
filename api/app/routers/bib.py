@@ -2,6 +2,7 @@ import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ from ..schemas import (
     PastePreview,
     PastePreviewEntry,
 )
+from ..upload_limits import read_bib_upload
 
 router = APIRouter(tags=["bibtex"])
 
@@ -31,8 +33,9 @@ MAX_PASTE_ENTRIES = 200
 VALIDATE_CONCURRENCY = 4
 
 
-def _parse_or_400(raw: str) -> list[ParsedEntry]:
-    entries = parse_bibtex(raw)
+async def _parse_or_400(raw: str) -> list[ParsedEntry]:
+    # pyparsing is CPU-bound (seconds for a large file): keep it off the event loop.
+    entries = await run_in_threadpool(parse_bibtex, raw)
     if not entries:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No BibTeX entries found")
     return entries
@@ -114,8 +117,8 @@ async def import_bib(
     lib: Library = Depends(library_editor),
     session: AsyncSession = Depends(get_session),
 ):
-    raw = (await file.read()).decode("utf-8", errors="replace")
-    entries = _parse_or_400(raw)
+    raw = (await read_bib_upload(file)).decode("utf-8", errors="replace")
+    entries = await _parse_or_400(raw)
     return await _import_entries(session, lib, entries, file.filename or "import.bib")
 
 
@@ -127,7 +130,7 @@ async def preview_pasted_bibtex(
 ):
     """Parse pasted BibTeX, flag duplicates and key collisions, and validate every
     non-duplicate entry against Crossref/arXiv. Saves nothing."""
-    entries = _parse_or_400(payload.bibtex)
+    entries = await _parse_or_400(payload.bibtex)
     if len(entries) > MAX_PASTE_ENTRIES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -175,7 +178,7 @@ async def import_pasted_bibtex(
 ):
     """Add pasted BibTeX (only the entries at `indices`, if given — positions from the
     preview), validating each added item. Duplicates are still skipped."""
-    entries = _parse_or_400(payload.bibtex)
+    entries = await _parse_or_400(payload.bibtex)
     if payload.indices is not None:
         wanted = set(payload.indices)
         entries = [e for i, e in enumerate(entries) if i in wanted]

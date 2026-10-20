@@ -15,6 +15,7 @@ from ..db import get_session
 from ..deps import item_editor, library_editor
 from ..models import Attachment, Item, Library, User
 from ..storage import download_bytes
+from ..upload_limits import read_pdf_upload
 
 router = APIRouter(tags=["validation"])
 
@@ -105,7 +106,7 @@ async def validate_pdf_upload(
 ):
     """Upload an arbitrary PDF (no Item required) and get a verdict for every citation
     in its bibliography. Useful for vetting an AI-drafted paper before importing."""
-    data = await file.read()
+    data = await read_pdf_upload(file)
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
     return await _validate_pdf_bytes(data)

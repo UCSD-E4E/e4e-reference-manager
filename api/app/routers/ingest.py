@@ -24,6 +24,7 @@ from ..schemas import (
     MetadataProposal,
 )
 from ..storage import download_bytes, upload_bytes
+from ..upload_limits import read_pdf_upload
 from .items import _denormalize, apply_changes, lock_item
 
 router = APIRouter(tags=["ingest"])
@@ -140,7 +141,7 @@ async def create_item_from_pdf(
     session: AsyncSession = Depends(get_session),
 ):
     """Create a reference from a PDF: store it and best-effort populate metadata via GROBID."""
-    data = await file.read()
+    data = await read_pdf_upload(file)
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty file")
 

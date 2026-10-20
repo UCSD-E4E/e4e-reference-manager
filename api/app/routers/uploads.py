@@ -22,12 +22,12 @@ from ..db import get_session
 from ..deps import _rank, item_editor, library_access_level
 from ..models import Item, Library, PdfUploadLink, User
 from ..schemas import AttachmentOut, PdfUploadLinkOut
+from ..upload_limits import read_pdf_upload
 from .attachments import _store_attachment
 
 router = APIRouter(tags=["attachments"])
 
 LINK_LIFETIME = timedelta(minutes=15)
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def _hash(secret: str) -> str:
@@ -64,18 +64,6 @@ async def create_upload_link(
     )
 
 
-async def _read_capped(file: UploadFile) -> bytes:
-    data = bytearray()
-    while chunk := await file.read(1024 * 1024):
-        data += chunk
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(
-                status.HTTP_413_CONTENT_TOO_LARGE,
-                f"PDFs are limited to {MAX_UPLOAD_BYTES // (1024 * 1024)} MB",
-            )
-    return bytes(data)
-
-
 @router.post(
     "/uploads/{secret}", response_model=AttachmentOut, status_code=status.HTTP_201_CREATED
 )
@@ -103,7 +91,7 @@ async def upload_with_link(
             status.HTTP_403_FORBIDDEN, "The link's creator no longer has edit access"
         )
 
-    data = await _read_capped(file)
+    data = await read_pdf_upload(file)
     if not data.startswith(b"%PDF"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only PDF files can be uploaded")
 

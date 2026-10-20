@@ -5,12 +5,17 @@ API so the backing store (SeaweedFS now, Garage / Ceph-RGW later) is swappable.
 """
 from __future__ import annotations
 
+import re
+from urllib.parse import quote
+
 import boto3
 from botocore.client import Config
 
 from .config import get_settings
 
 settings = get_settings()
+
+OPAQUE_TYPE = "application/octet-stream"  # how anything that isn't a PDF is served
 
 
 def _client(endpoint: str | None = None):
@@ -41,11 +46,26 @@ def download_bytes(key: str) -> bytes:
     return _client().get_object(Bucket=settings.s3_bucket, Key=key)["Body"].read()
 
 
+def _safe_filename(name: str) -> str:
+    """A filename that can't break out of the quoted Content-Disposition parameter."""
+    return re.sub(r'["\\\x00-\x1f\x7f]', "_", name) or "download"
+
+
 def presigned_get_url(key: str, download_name: str | None = None) -> str:
-    """Presigned GET URL, signed with the *public* endpoint the browser can reach."""
+    """Presigned GET URL, signed with the *public* endpoint the browser can reach.
+
+    The response type is always forced, whatever type the object was stored with (old
+    uploads kept the client's claim, e.g. text/html): inline URLs are only made for
+    PDFs and served as application/pdf; downloads are opaque attachments."""
     params = {"Bucket": settings.s3_bucket, "Key": key}
     if download_name:
-        params["ResponseContentDisposition"] = f'attachment; filename="{download_name}"'
+        params["ResponseContentDisposition"] = (
+            f'attachment; filename="{_safe_filename(download_name)}"; '
+            f"filename*=UTF-8''{quote(download_name, safe='')}"
+        )
+        params["ResponseContentType"] = OPAQUE_TYPE
+    else:
+        params["ResponseContentType"] = "application/pdf"
     return _client(settings.s3_public_endpoint_url).generate_presigned_url(
         "get_object", Params=params, ExpiresIn=settings.presign_expiry_seconds
     )

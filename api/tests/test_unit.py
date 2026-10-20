@@ -133,3 +133,80 @@ def test_bibtex_title_protective_braces_are_removed(raw, expected):
     [entry] = parse_bibtex(f"@article{{k, title = {{{raw}}}, journal = {{{{IEEE}} Sensors}}}}")
     assert entry.csl_json["title"] == expected
     assert entry.csl_json["container-title"] == "IEEE Sensors"
+
+
+# ---------- hostile .bib input ----------
+
+
+@pytest.mark.parametrize("year, kept", [("2020", 2020), ("1", 1), ("9999", 9999), ("0", None),
+                                        ("10000", None), ("99999999999", None), ("-3", None)])
+def test_bibtex_years_outside_1_to_9999_are_dropped(year, kept):
+    [entry] = parse_bibtex(f"@misc{{k, title={{T}}, year={{{year}}}}}")
+    got = entry.csl_json.get("issued", {}).get("date-parts", [[None]])[0][0]
+    assert got == kept
+    assert year_from_csl({"issued": {"date-parts": [[int(year)]]}}) == kept
+
+
+def test_year_from_csl_rejects_out_of_range_values():
+    assert year_from_csl({"issued": {"date-parts": [[10**12]]}}) is None
+    assert year_from_csl({"issued": {"date-parts": [["1999"]]}}) == 1999
+
+
+def test_bibtex_nul_bytes_are_stripped():
+    [entry] = parse_bibtex("@misc{k\x00ey, title={Nul\x00 title}, note={a\x00b}}")
+    assert "\x00" not in entry.raw_bibtex
+    assert "\x00" not in repr(entry.csl_json) and "\x00" not in entry.citation_key
+    assert entry.csl_json["title"] == "Nul title"
+
+
+# ---------- generated BibTeX export ----------
+
+
+def _export_one(csl, key="k"):
+    return build_bibtex([(key, {"type": "article-journal", **csl}, None)])
+
+
+def _reparse(out):
+    return parse_bibtex(out)
+
+
+def test_literal_author_names_are_exported_braced():
+    out = _export_one({"title": "Report", "author": [{"literal": "World Health Organization"},
+                                                      {"family": "Ng", "given": "A"}]})
+    assert "author = {{World Health Organization} and Ng, A}" in out
+    [entry] = _reparse(out)
+    assert entry.csl_json["author"][0] == {"literal": "World Health Organization"}
+
+
+def test_latex_specials_are_escaped_in_generated_entries():
+    out = _export_one({"title": "R&D at 50% for $5 #1 my_var"})
+    assert r"R\&D at 50\% for \$5 \#1 my\_var" in out
+    # already-escaped specials aren't escaped twice
+    assert r"A \& B" in _export_one({"title": r"A \& B"})
+
+
+def test_urls_and_dois_are_not_latex_escaped():
+    out = _export_one({"title": "T", "URL": "https://x.example/a_b?c=1&d=2",
+                       "DOI": "10.1/a_b"})
+    assert "url = {https://x.example/a_b?c=1&d=2}" in out
+    assert "doi = {10.1/a_b}" in out
+
+
+@pytest.mark.parametrize("title", ["Unbalanced } close", "Unclosed { open", "}{", "a}}b{{c"])
+def test_unbalanced_braces_cannot_swallow_the_next_entry(title):
+    out = build_bibtex(
+        [
+            ("bad", {"type": "article-journal", "title": title}, None),
+            ("good", {"type": "article-journal", "title": "Still here"}, None),
+        ]
+    )
+    entries = _reparse(out)
+    assert [e.citation_key for e in entries] == ["bad", "good"]
+    assert entries[1].csl_json["title"] == "Still here"
+
+
+def test_odd_csl_values_do_not_crash_export():
+    out = _export_one({"title": 42, "author": ["not a dict", {"family": "Ng"}],
+                       "page": ["1", "2"]}, key="we{ird} key,")
+    [entry] = _reparse(out)
+    assert entry.csl_json["author"] == [{"family": "Ng"}]

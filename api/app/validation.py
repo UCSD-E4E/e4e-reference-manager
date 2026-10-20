@@ -18,8 +18,11 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 import httpx
+
+from .ingest import normalize_doi
 
 logger = logging.getLogger("refman")
 
@@ -105,7 +108,8 @@ async def crossref_lookup(doi: str) -> dict | None:
         return None
     try:
         async with httpx.AsyncClient(timeout=20.0, headers=_HEADERS) as client:
-            r = await client.get(f"{CROSSREF_URL}/{doi}")
+            # DOIs may contain '#', '?', '%'...: quote them so they stay in the path.
+            r = await client.get(f"{CROSSREF_URL}/{quote(doi, safe='/')}")
         if r.status_code == 404:
             return None
         r.raise_for_status()
@@ -172,7 +176,9 @@ def _verdict(
 
 async def validate_item_csl(csl: dict) -> dict:
     title = csl.get("title") or ""
-    doi = (csl.get("DOI") or "").lower()
+    raw_doi = csl.get("DOI")
+    # "https://doi.org/10.1/x" and "doi:10.1/x" are the same DOI as "10.1/x"
+    doi = normalize_doi(raw_doi if isinstance(raw_doi, str) else None) or ""
 
     if doi:
         work = await crossref_lookup(doi)
