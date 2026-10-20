@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..audit import item_snapshot, record
 from ..auth import get_current_user
 from ..db import get_session
-from ..dedupe import find_duplicate_groups, merge_into
+from ..dedupe import csl_match_keys, find_duplicate_groups, library_index, merge_into
 from ..deps import item_editor, library_editor
 from ..grobid import extract_header_csl
 from ..ingest import IngestError, fetch_csl, gen_citation_key, normalize_doi
@@ -42,20 +42,19 @@ async def ingest_identifier(
     except IngestError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc))
 
-    # existing DOIs in this library for dedup
-    rows = await session.execute(
-        select(Item.id, Item.doi).where(Item.library_id == lib.id, Item.doi.isnot(None))
-    )
-    existing = {normalize_doi(doi): iid for iid, doi in rows if normalize_doi(doi)}
+    # Same duplicate rule as .bib import: DOI, else normalized title + year (identifiers
+    # like ISBNs and many URLs resolve without a DOI).
+    _, owner = await library_index(session, lib.id)
 
     results: list[IngestResultItem] = []
     for csl in csl_list:
         nd = normalize_doi(csl.get("DOI"))
-        if nd and nd in existing:
+        mkeys = csl_match_keys(csl)
+        if hit := next((k for k in mkeys if k in owner), None):
             results.append(
                 IngestResultItem(
                     status="duplicate",
-                    item_id=existing[nd],
+                    item_id=owner[hit],
                     citation_key="",
                     title=csl.get("title", ""),
                     doi=nd,
@@ -77,8 +76,8 @@ async def ingest_identifier(
             summary=f"Imported “{item.title or key}”",
             after=item_snapshot(item),
         )
-        if nd:
-            existing[nd] = item.id
+        for k in mkeys:
+            owner.setdefault(k, item.id)
         results.append(
             IngestResultItem(
                 status="created", item_id=item.id, citation_key=key, title=item.title, doi=nd

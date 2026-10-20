@@ -106,24 +106,31 @@ export default function Tokens() {
         <strong>Connect an AI agent (MCP)</strong>
         <p className="muted">
           Claude Code and other MCP clients can search, add, annotate and validate references
-          through the MCP server at <code>{MCP_URL}</code>, using a token from this page. It
-          never deletes anything. In Claude Code, run:
+          through the MCP server at <code>{MCP_URL}</code>, using a token from this page. Agents
+          can't delete anything or edit a reference's metadata.
         </p>
-        <div className="row">
-          <input
-            className="grow"
-            readOnly
-            value={mcpCommand(created?.token ?? "<token>")}
-            onFocus={(e) => e.target.select()}
-          />
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => copy(mcpCommand(created?.token ?? "<token>"), "command")}
-          >
-            {copied === "command" ? "Copied" : "Copy"}
-          </button>
-        </div>
+        {created ? (
+          <>
+            <p className="muted">In Claude Code, run:</p>
+            <div className="row">
+              <input
+                className="grow"
+                readOnly
+                value={mcpCommand(created.token)}
+                onFocus={(e) => e.target.select()}
+              />
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => copy(mcpCommand(created.token), "command")}
+              >
+                {copied === "command" ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="muted">Create a token above to get the command that connects Claude Code.</p>
+        )}
       </div>
       {tokens.length === 0 && <p className="muted">No tokens yet.</p>}
       {tokens.length > 0 && (

@@ -267,3 +267,84 @@ async def test_tools_respect_library_permissions(agent, db, make_user):
     assert await _call(agent, "list_libraries") == {"libraries": []}
     err = await _call_error(agent, "list_references", library_id=str(bobs.id))
     assert "403" in err or "404" in err
+
+
+# ── Robustness ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("args", [{"limit": 0}, {"limit": -1}, {"offset": -5}, {"limit": 201}])
+async def test_paging_arguments_are_validated(agent, db, alice, args):
+    lib_id = await _new_library(db, alice)
+    err = await _call_error(agent, "list_references", library_id=lib_id, **args)
+    assert "limit" in err or "offset" in err
+
+
+async def test_inner_crash_is_a_clean_tool_error(agent, db, alice, monkeypatch):
+    async def boom(query):
+        raise RuntimeError("translation-server exploded")
+
+    monkeypatch.setattr("app.routers.ingest.fetch_csl", boom)
+    lib_id = await _new_library(db, alice)
+    err = await _call_error(agent, "add_reference", library_id=lib_id, identifier="10.1/x")
+    assert "500: Internal Server Error" in err
+
+
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        ({"detail": "Library not found"}, "404: Library not found"),
+        ({"detail": [{"msg": "bad"}]}, "404: [{'msg': 'bad'}]"),
+        (["not", "an", "object"], "404: ['not', 'an', 'object']"),
+        ("plain", "404: plain"),
+    ],
+)
+def test_error_detail_handles_any_body(body, expected):
+    import httpx
+
+    from app.mcp_server import _error_message
+
+    r = httpx.Response(404, text=body) if isinstance(body, str) else httpx.Response(404, json=body)
+    assert _error_message(r) == expected
+
+
+@pytest.mark.parametrize("auth", ["Bearer ", "Bearer    ", "Bearer\t"])
+async def test_empty_bearer_token_gets_a_clear_message(mcp_app, auth):
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as http:
+        r = await http.post(
+            "/mcp",
+            headers={"Authorization": auth},
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        )
+    assert r.status_code == 401
+    assert "required" in r.json()["detail"]
+
+
+async def test_not_running_is_503(mcp_app, db, alice):
+    """Outside the app's lifespan there is no session manager: say so, don't 500."""
+    token = await _token(db, alice)
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as http:
+        r = await http.post(
+            "/mcp",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        )
+    assert r.status_code == 503
+
+
+async def test_tool_annotations_are_honest(agent):
+    tools = {t.name: t.annotations for t in await agent.list_tools()}
+    read_only = {n for n, a in tools.items() if a.read_only_hint}
+    assert read_only == {
+        "list_libraries",
+        "search_references",
+        "list_references",
+        "get_reference",
+        "export_bibtex",
+        "list_collections",
+        "list_collection_references",
+    }
+    # validate_reference overwrites the stored verdict: it is an update, not a pure add.
+    assert tools["validate_reference"].destructive_hint is True
+    assert not any(a.destructive_hint for n, a in tools.items() if n != "validate_reference")

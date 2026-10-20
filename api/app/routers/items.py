@@ -75,8 +75,8 @@ async def list_items(
     lib: Library = Depends(library_viewer),
     session: AsyncSession = Depends(get_session),
     q: str | None = Query(None, description="Full-text search (title, abstract, authors)"),
-    limit: int = Query(50, le=200),
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
 ):
     base = select(Item).where(Item.library_id == lib.id)
     order = Item.created_at.desc()

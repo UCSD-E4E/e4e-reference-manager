@@ -159,7 +159,8 @@ async def _touch_token(session: AsyncSession, token_id: uuid.UUID, now: datetime
         )
 
 
-async def _context_from_token(session: AsyncSession, raw: str) -> AuthContext:
+async def authenticate_token(session: AsyncSession, raw: str) -> AuthContext:
+    """Resolve a raw API token, or raise 401 if it is unknown or expired."""
     now = datetime.now(timezone.utc)
     row = await session.scalar(
         select(ApiToken).where(ApiToken.token_hash == hash_api_token(raw))
@@ -180,7 +181,7 @@ async def get_auth_context(
     # exercised locally). Any other Authorization header is a botched attempt: refuse
     # it rather than fall back to the cookie or the dev user.
     if credentials is not None:
-        return await _context_from_token(session, credentials.credentials.strip())
+        return await authenticate_token(session, credentials.credentials.strip())
     if request.headers.get("authorization") is not None:
         raise _token_error("Malformed Authorization header; expected 'Bearer <token>'")
     s = get_settings()

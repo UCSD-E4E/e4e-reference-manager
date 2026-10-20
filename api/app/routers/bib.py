@@ -11,7 +11,7 @@ from .. import validation
 from ..bibtex import ParsedEntry, build_bibtex, parse_bibtex, year_from_csl
 from ..db import get_session
 from ..deps import library_access_level, library_editor, library_viewer
-from ..dedupe import match_keys
+from ..dedupe import csl_match_keys, library_index
 from ..models import BibFile, Item, Library, User
 from ..routers.items import _denormalize
 from ..schemas import (
@@ -31,27 +31,8 @@ MAX_PASTE_ENTRIES = 200
 VALIDATE_CONCURRENCY = 4
 
 
-async def _project_index(
-    session: AsyncSession, lib: Library
-) -> tuple[set[str], dict[tuple[str, object], uuid.UUID]]:
-    """The project's citation keys, and its items by duplicate-match key (app.dedupe)."""
-    rows = await session.execute(
-        select(Item.id, Item.citation_key, Item.doi, Item.title, Item.year).where(
-            Item.library_id == lib.id
-        )
-    )
-    keys: set[str] = set()
-    owner: dict[tuple[str, object], uuid.UUID] = {}
-    for iid, key, doi, title, year in rows:
-        keys.add(key)
-        for k in match_keys(doi, title, year):
-            owner.setdefault(k, iid)
-    return keys, owner
-
-
 def _entry_match_keys(entry: ParsedEntry) -> list[tuple[str, object]]:
-    csl = entry.csl_json
-    return match_keys(csl.get("DOI"), csl.get("title"), year_from_csl(csl))
+    return csl_match_keys(entry.csl_json)
 
 
 def _parse_or_400(raw: str) -> list[ParsedEntry]:
@@ -76,7 +57,7 @@ async def _import_entries(
     session.add(bib_file)
     await session.flush()  # assign bib_file.id
 
-    keys, owner = await _project_index(session, lib)
+    keys, owner = await library_index(session, lib.id)
     imported: list[tuple[Item, dict]] = []
     duplicates: list[ImportDuplicate] = []
     collisions: list[str] = []
@@ -161,7 +142,7 @@ async def preview_pasted_bibtex(
             "use Import .bib for larger files.",
         )
 
-    keys, owner = await _project_index(session, lib)
+    keys, owner = await library_index(session, lib.id)
     seen: dict[tuple[str, object], int] = {}
     rows: list[PastePreviewEntry] = []
     for i, entry in enumerate(entries):
