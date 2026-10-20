@@ -12,6 +12,7 @@ from ..db import get_session
 from ..deps import item_editor, item_viewer, library_editor, library_viewer
 from ..models import AuditEvent, Item, Library, User
 from ..schemas import AuditEventOut, ItemCreate, ItemList, ItemOut, ItemUpdate
+from ..trash import move_to_trash
 
 router = APIRouter(tags=["items"])
 
@@ -168,17 +169,8 @@ async def delete_item(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    record(
-        session,
-        actor=user,
-        library_id=item.library_id,
-        entity_type="item",
-        entity_id=item.id,
-        operation="delete",
-        summary=f"Deleted “{item.title or item.citation_key}”",
-        before=item_snapshot(item),
-    )
-    await session.delete(item)
+    """Move the item to its library's trash (restorable for 30 days; see app.trash)."""
+    move_to_trash(session, item, user)
     await session.commit()
 
 

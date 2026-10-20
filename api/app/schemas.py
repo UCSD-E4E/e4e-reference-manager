@@ -121,6 +121,13 @@ class ItemOut(BaseModel):
     attachments: list[AttachmentOut] = Field(default_factory=list)
 
 
+class TrashedItemOut(BaseModel):
+    item: ItemOut
+    deleted_at: datetime
+    deleted_by: UserOut | None
+    purge_at: datetime  # when it will be deleted for good
+
+
 class ItemList(BaseModel):
     total: int
     items: list[ItemOut]

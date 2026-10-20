@@ -25,6 +25,7 @@ import type {
   Share,
   SuggestedTags,
   Tag,
+  TrashedItem,
   User,
   Validation,
 } from "./types";
@@ -115,7 +116,15 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ version, csl_json, ...extra }),
     }),
+  // Moves the item to its library's trash (restorable for 30 days).
   deleteItem: (id: string) => req<void>(`/items/${id}`, { method: "DELETE" }),
+  listTrash: (libId: string) => req<TrashedItem[]>(`/libraries/${libId}/trash`),
+  restoreFromTrash: (libId: string, itemId: string) =>
+    req<Item>(`/libraries/${libId}/trash/${itemId}/restore`, { method: "POST" }),
+  deleteForever: (libId: string, itemId: string) =>
+    req<void>(`/libraries/${libId}/trash/${itemId}`, { method: "DELETE" }),
+  emptyTrash: (libId: string) =>
+    req<{ purged: number }>(`/libraries/${libId}/trash`, { method: "DELETE" }),
 
   previewPaste: (libId: string, bibtex: string) =>
     req<{ entries: PastePreviewEntry[] }>(`/libraries/${libId}/import/preview`, {

@@ -374,8 +374,11 @@ export default function LibraryView() {
 
   return (
     <div>
-      <p className="muted">
-        <Link to="/">← Projects</Link>
+      <p className="muted row">
+        <Link to="/" className="grow">
+          ← Projects
+        </Link>
+        <Link to={`/libraries/${libId}/trash`}>Trash</Link>
       </p>
       <h1>
         {lib?.name ?? "Project"}{" "}

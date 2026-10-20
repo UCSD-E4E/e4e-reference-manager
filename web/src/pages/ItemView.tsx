@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
 import ItemEditor from "../components/ItemEditor";
@@ -14,6 +14,7 @@ function authorsText(csl: Record<string, unknown>): string {
 
 export default function ItemView() {
   const { itemId = "" } = useParams();
+  const navigate = useNavigate();
   const [item, setItem] = useState<Item | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [pdfMsg, setPdfMsg] = useState("");
@@ -46,6 +47,18 @@ export default function ItemView() {
       setCollections(await api.listCollections(it.library_id));
       const lib = await api.getLibrary(it.library_id);
       setCanEdit(lib.my_access === "edit" || lib.my_access === "manage");
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
+  const moveToTrash = async () => {
+    if (!item) return;
+    if (!confirm(`Move “${item.title || item.citation_key}” to the trash? You can restore it for 30 days.`))
+      return;
+    try {
+      await api.deleteItem(itemId);
+      navigate(`/libraries/${item.library_id}`);
     } catch (e) {
       setErr(String(e));
     }
@@ -205,9 +218,14 @@ export default function ItemView() {
       <div className="row">
         <h1 className="grow">{item.title || "(untitled)"}</h1>
         {canEdit && !editing && (
-          <button className="secondary" type="button" onClick={() => setEditing(true)}>
-            Edit
-          </button>
+          <>
+            <button className="secondary" type="button" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            <button className="secondary" type="button" onClick={moveToTrash}>
+              Move to trash
+            </button>
+          </>
         )}
       </div>
       {err && <p className="error">{err}</p>}

@@ -203,6 +203,24 @@ REFMAN_OIDC_REDIRECT_URI=http://localhost:8000/auth/callback
 Then the SPA's “login” flow redirects through Authentik. (Group/role mapping and a
 single-origin Caddy reverse proxy land in Phase 1.)
 
+## Trash
+
+Deleting a reference moves it to its project's **Trash** (linked from the project page)
+instead of destroying it. Its notes, PDFs and collection memberships stay with it, and
+anyone with edit access can restore it for 30 days. After that the API purges it for
+good; the purge runs at startup and every 6 hours.
+
+- A trashed reference disappears from every view and endpoint: lists, search,
+  collections, exports, duplicate checks and `/items/{id}`. One SQLAlchemy rule in
+  `app/trash.py` hides trashed rows from all ORM queries. Code that needs the trash opts in
+  with `.execution_options(include_trashed=True)`.
+- `GET /libraries/{id}/trash` lists it (view access).
+  `POST /libraries/{id}/trash/{item}/restore`, `DELETE /libraries/{id}/trash/{item}`
+  (delete forever) and `DELETE /libraries/{id}/trash` (empty) need edit access.
+- Moving to the trash, restoring and purging are all recorded in the activity history.
+- Only references go to the trash. Notes, collections and auto-groups are still deleted
+  immediately.
+
 ## API tokens (scripts & agents)
 
 Scripts and AI agents can use the REST API without a browser login. Open **API tokens**
