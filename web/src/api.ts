@@ -1,6 +1,8 @@
 import type {
   Annotation,
   AnnotationRect,
+  ApiToken,
+  ApiTokenCreated,
   AuditEvent,
   AutoGroup,
   AutoGroupGenerateSource,
@@ -198,6 +200,15 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteAnnotation: (id: string) => req<void>(`/annotations/${id}`, { method: "DELETE" }),
+
+  // Personal API tokens (for scripts / agents)
+  listTokens: () => req<ApiToken[]>("/auth/tokens"),
+  createToken: (name: string, expires_in_days: number) =>
+    req<ApiTokenCreated>("/auth/tokens", {
+      method: "POST",
+      body: JSON.stringify({ name, expires_in_days }),
+    }),
+  revokeToken: (id: string) => req<void>(`/auth/tokens/${id}`, { method: "DELETE" }),
 
   // Groups & members
   listGroups: () => req<Group[]>("/groups"),

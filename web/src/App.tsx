@@ -3,6 +3,7 @@ import Libraries from "./pages/Libraries";
 import LibraryView from "./pages/LibraryView";
 import ItemView from "./pages/ItemView";
 import Groups from "./pages/Groups";
+import Tokens from "./pages/Tokens";
 import ShareTarget from "./pages/ShareTarget";
 
 export default function App() {
@@ -15,11 +16,15 @@ export default function App() {
         <Link to="/groups" className="navlink">
           Groups
         </Link>
+        <Link to="/tokens" className="navlink">
+          API tokens
+        </Link>
       </header>
       <main className="content">
         <Routes>
           <Route path="/" element={<Libraries />} />
           <Route path="/groups" element={<Groups />} />
+          <Route path="/tokens" element={<Tokens />} />
           <Route path="/share-target" element={<ShareTarget />} />
           <Route path="/libraries/:libId" element={<LibraryView />} />
           <Route path="/items/:itemId" element={<ItemView />} />
