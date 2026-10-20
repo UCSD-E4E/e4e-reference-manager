@@ -1,9 +1,12 @@
-"""Pytest fixtures: a dedicated refman_test Postgres DB, an async ASGI client, and a
+"""Pytest fixtures: a dedicated test Postgres DB (refman_test, or $REFMAN_TEST_DB), an
+async ASGI client, and a
 login() helper to drive endpoints as a chosen user (RBAC tests).
 
 External services (translation-server, GROBID) are never hit; tests monkeypatch them.
 """
 import asyncio
+import os
+import re
 
 import pytest
 import pytest_asyncio
@@ -21,21 +24,26 @@ from app.models import Base, User
 _URL = get_settings().database_url
 _BASE = _URL.rsplit("/", 1)[0]
 ADMIN_URL = _URL
-TEST_URL = f"{_BASE}/refman_test"
+# REFMAN_TEST_DB lets parallel runs (e.g. several worktrees) use separate databases;
+# each run drops and recreates its own.
+TEST_DB = os.environ.get("REFMAN_TEST_DB", "refman_test")
+if not re.fullmatch(r"[a-z_][a-z0-9_]*", TEST_DB):
+    raise ValueError(f"REFMAN_TEST_DB must be a plain identifier, got {TEST_DB!r}")
+TEST_URL = f"{_BASE}/{TEST_DB}"
 
 _ALL_TABLES = ", ".join(t.name for t in Base.metadata.sorted_tables)
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _prepare_database():
-    """Create a fresh refman_test DB + schema once for the whole session (sync wrapper
+    """Create a fresh test DB + schema once for the whole session (sync wrapper
     so it doesn't tangle with per-test event loops)."""
 
     async def setup():
         admin = create_async_engine(ADMIN_URL, isolation_level="AUTOCOMMIT")
         async with admin.connect() as conn:
-            await conn.execute(text("DROP DATABASE IF EXISTS refman_test WITH (FORCE)"))
-            await conn.execute(text("CREATE DATABASE refman_test"))
+            await conn.execute(text(f"DROP DATABASE IF EXISTS {TEST_DB} WITH (FORCE)"))
+            await conn.execute(text(f"CREATE DATABASE {TEST_DB}"))
         await admin.dispose()
         eng = create_async_engine(TEST_URL)
         async with eng.begin() as conn:
