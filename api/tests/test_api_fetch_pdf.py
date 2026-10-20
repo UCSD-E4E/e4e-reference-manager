@@ -476,3 +476,12 @@ async def test_reference_url_is_deduped_against_candidates_by_normalized_form(ne
     net.update(_unpaywall("10.1/x", "https://pub.example/x.pdf"))
     csl = {"DOI": "10.1/x", "URL": "HTTPS://Pub.Example:443/x.pdf#page=2"}
     assert [s for s, _ in await oa.find_candidates(csl)] == ["unpaywall"]
+
+
+def test_ipv4_is_preferred_when_a_host_has_both(monkeypatch):
+    """The API's docker network is IPv4-only: connecting to a host's IPv6 address
+    (getaddrinfo's order isn't guaranteed) would fail every such download."""
+    monkeypatch.setattr(oa, "public_addresses", lambda host: ["2606:4700::1", "104.16.1.1"])
+    assert oa._public_address("pub.example") == "104.16.1.1"
+    monkeypatch.setattr(oa, "public_addresses", lambda host: ["2606:4700::1"])
+    assert oa._public_address("v6only.example") == "2606:4700::1"

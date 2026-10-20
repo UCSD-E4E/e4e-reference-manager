@@ -48,9 +48,12 @@ def _client() -> httpx.AsyncClient:
 
 def _public_address(host: str) -> str | None:
     """An address to connect to for `host`, or None unless every address it resolves
-    to is globally routable. Blocking: call it in a thread."""
+    to is globally routable. Blocking: call it in a thread.
+
+    Prefers IPv4: the API's docker network has no IPv6 route, and getaddrinfo's order
+    isn't guaranteed to put a usable address first."""
     addrs = public_addresses(host)
-    return addrs[0] if addrs else None
+    return next((a for a in addrs if ":" not in a), addrs[0]) if addrs else None
 
 
 def _http_url(value: object) -> SplitResult | None:
