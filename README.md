@@ -203,6 +203,27 @@ REFMAN_OIDC_REDIRECT_URI=http://localhost:8000/auth/callback
 Then the SPA's “login” flow redirects through Authentik. (Group/role mapping and a
 single-origin Caddy reverse proxy land in Phase 1.)
 
+## API tokens (scripts & agents)
+
+Scripts and AI agents can use the REST API without a browser login. Open **API tokens**
+in the web app, create a token, and copy it (it's shown once). Send it as a Bearer
+header:
+
+```bash
+curl -H "Authorization: Bearer refman_..." https://bib.krg.ucsd.edu/api/libraries
+```
+
+- A token acts as the user who created it, with exactly their library permissions.
+- Only a SHA-256 hash is stored. Revoking a token on the same page takes effect
+  immediately.
+- Every token expires: 90 days by default, at most 1 year. A user can hold 25 unexpired
+  tokens; expired ones stay listed (marked "Expired") for 30 days, then are pruned.
+- Any `Authorization` header that isn't a valid `Bearer <token>` is refused with a 401.
+- Tokens can't list, create or revoke tokens; that requires a signed-in browser session.
+- A Bearer header takes precedence over `REFMAN_DEV_AUTH`, so token-based clients can be
+  tested locally. An invalid token gets a 401 and never falls back to the dev user.
+- The OpenAPI schema is at `/api/openapi.json` (interactive docs at `/api/docs`).
+
 ## Production deployment (bib.krg.ucsd.edu)
 
 Production runs as the KRG Incus tenant `reference-manager`. krg-infra owns the platform

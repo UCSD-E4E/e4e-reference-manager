@@ -4,6 +4,20 @@ export interface User {
   name: string;
 }
 
+export interface ApiToken {
+  id: string;
+  name: string;
+  prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string;
+}
+
+/** Only returned at creation: `token` is never shown again. */
+export interface ApiTokenCreated extends ApiToken {
+  token: string;
+}
+
 export interface Library {
   id: string;
   name: string;

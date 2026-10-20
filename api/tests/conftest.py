@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.auth import get_current_user
+from app.auth import AuthContext, get_auth_context
 from app.config import get_settings
 from app.db import get_session
 from app.main import app
@@ -77,13 +77,13 @@ async def client(engine, _auth_state):
         async with Session() as session:
             yield session
 
-    async def override_user():
+    async def override_auth():
         if _auth_state["user"] is None:
             raise HTTPException(401, "no test user logged in")
-        return _auth_state["user"]
+        return AuthContext(_auth_state["user"])
 
     app.dependency_overrides[get_session] = override_session
-    app.dependency_overrides[get_current_user] = override_user
+    app.dependency_overrides[get_auth_context] = override_auth
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

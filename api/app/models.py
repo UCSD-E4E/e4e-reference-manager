@@ -85,6 +85,26 @@ class User(Base):
     groups: Mapped[list["Group"]] = relationship(secondary=user_group, lazy="selectin")
 
 
+class ApiToken(Base):
+    """A personal API token: lets scripts / agents act as `user` via a Bearer header.
+    Only the SHA-256 of the token is stored; `prefix` is kept to tell tokens apart."""
+
+    __tablename__ = "api_token"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_account.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    prefix: Mapped[str] = mapped_column(String(32))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(lazy="joined")
+
+
 class Group(Base):
     """A team. Membership is typically sourced from Authentik group claims."""
 
