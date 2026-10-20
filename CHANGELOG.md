@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.10.0...v1.11.0) (2026-10-20)
+
+
+### Features
+
+* update_reference MCP tool; fix stray braces in imported BibTeX titles ([d7bd37e](https://github.com/UCSD-E4E/e4e-reference-manager/commit/d7bd37e4c905d54c7884426791be6297af9923d4))
+* update_reference MCP tool; fix stray braces in imported BibTeX titles ([1f035ca](https://github.com/UCSD-E4E/e4e-reference-manager/commit/1f035caf6d5e16603297a1bf6c4291f401e4f89e))
+
 ## [1.10.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.9.0...v1.10.0) (2026-10-20)
 
 
