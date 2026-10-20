@@ -27,7 +27,10 @@ export default defineConfig({
       },
       workbox: {
         // Phase 0: cache the app shell only. Read-only metadata caching is Phase 4.
-        navigateFallbackDenylist: [/^\/api\//, /^\/(auth|libraries|items|attachments|bib-files)/],
+        // Every other path is an SPA route (/libraries/…, /items/…) and must get the
+        // shell offline too. In production the API lives only under /api; in dev it is
+        // on another origin (VITE_API_URL), which the service worker never intercepts.
+        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],

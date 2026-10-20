@@ -12,6 +12,7 @@ import type {
   Group,
   ImportResult,
   Item,
+  ItemList,
   Library,
   LibraryPdfFetch,
   LibraryPdfFetchCounts,
@@ -92,27 +93,39 @@ export default function LibraryView() {
     }
   };
 
-  const loadItems = (query = "") =>
-    api
-      .listItems(libId, query)
+  // Only the latest list request may fill the list: a slow earlier one (e.g. semantic
+  // search for "ne" while the user typed on to "neural net") must not overwrite it.
+  const listSeq = useRef(0);
+  const searchTimer = useRef<number | undefined>(undefined);
+  const showItems = (request: Promise<ItemList>) => {
+    const seq = ++listSeq.current;
+    return request
       .then((r) => {
+        if (seq !== listSeq.current) return;
         setItems(r.items);
         setTotal(r.total);
       })
-      .catch((e) => setErr(String(e)));
+      .catch((e) => {
+        if (seq === listSeq.current) setErr(String(e));
+      });
+  };
+
+  const loadItems = (query = "") => showItems(api.listItems(libId, query));
 
   // Browse (empty query) and keyword mode use the FTS list endpoint; semantic/hybrid use
   // the dedicated /search endpoint (pgvector + RRF).
   const runSearch = (query: string, m: SearchMode = mode) => {
+    window.clearTimeout(searchTimer.current); // supersedes a pending debounced search
     if (!query.trim() || m === "keyword") return loadItems(query);
-    return api
-      .searchItems(libId, query, m)
-      .then((r) => {
-        setItems(r.items);
-        setTotal(r.total);
-      })
-      .catch((e) => setErr(String(e)));
+    return showItems(api.searchItems(libId, query, m));
   };
+
+  // While typing: wait for a pause instead of searching on every keystroke.
+  const searchSoon = (query: string) => {
+    window.clearTimeout(searchTimer.current);
+    searchTimer.current = window.setTimeout(() => runSearch(query), 300);
+  };
+  useEffect(() => () => window.clearTimeout(searchTimer.current), []);
 
   const doValidate = async () => {
     setValidateMsg("Validating sources…");
@@ -121,7 +134,7 @@ export default function LibraryView() {
       setValidateMsg(
         `Checked ${s.checked}: ${s.verified} verified, ${s.metadata_mismatch} mismatch, ${s.not_found} not found, ${s.unverifiable} unverifiable.`,
       );
-      loadItems(q); // refresh badges
+      runSearch(q); // refresh badges
     } catch (e) {
       setValidateMsg("");
       setErr(String(e));
@@ -179,7 +192,7 @@ export default function LibraryView() {
       if (!ok) return;
       const r = await api.dedupeLibrary(libId, false);
       setDedupeMsg(`Merged ${r.merged} duplicate item${r.merged === 1 ? "" : "s"}.`);
-      loadItems(q);
+      runSearch(q);
       loadMeta();
     } catch (e) {
       setErr(String(e));
@@ -190,7 +203,12 @@ export default function LibraryView() {
     setReindexMsg("Reindexing embeddings…");
     try {
       const r = await api.reindexLibrary(libId);
-      setReindexMsg(`Embedded ${r.embedded} of ${r.items} references.`);
+      // Only references without an embedding are (re)embedded.
+      setReindexMsg(
+        r.items
+          ? `Embedded ${r.embedded} of ${r.items} references that had no embedding.`
+          : "Every reference already has an embedding.",
+      );
     } catch (e) {
       setReindexMsg("");
       setErr(String(e));
@@ -219,6 +237,7 @@ export default function LibraryView() {
 
   useEffect(() => {
     loadMeta();
+    window.clearTimeout(searchTimer.current); // a search typed in the previous project
     loadItems();
     loadCollections();
     loadAutoGroups();
@@ -291,7 +310,7 @@ export default function LibraryView() {
     setErr("");
     try {
       setImp(await api.importBib(libId, file));
-      loadItems(q);
+      runSearch(q);
       loadMeta();
     } catch (e) {
       setErr(String(e));
@@ -316,7 +335,7 @@ export default function LibraryView() {
       setTitle("");
       setYear("");
       setAuthors("");
-      loadItems(q);
+      runSearch(q);
       loadMeta();
     } catch (e) {
       setErr(String(e));
@@ -333,7 +352,7 @@ export default function LibraryView() {
       const dup = results.filter((r) => r.status === "duplicate").length;
       setIngestMsg(`Imported ${created}${dup ? `, ${dup} already in library` : ""}.`);
       setIngestQuery("");
-      loadItems(q);
+      runSearch(q);
       loadMeta();
     } catch (e) {
       setIngestMsg("");
@@ -350,7 +369,7 @@ export default function LibraryView() {
     try {
       await api.createItemFromPdf(libId, file);
       setIngestMsg("Added reference from PDF.");
-      loadItems(q);
+      runSearch(q);
       loadMeta();
     } catch (e) {
       setIngestMsg("");
@@ -479,7 +498,7 @@ export default function LibraryView() {
           onAdded={(r) => {
             setPasting(false);
             setImp(r);
-            loadItems(q);
+            runSearch(q);
             loadMeta();
           }}
         />
@@ -522,7 +541,7 @@ export default function LibraryView() {
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
-              runSearch(e.target.value);
+              searchSoon(e.target.value);
             }}
           />
           <select
@@ -576,7 +595,12 @@ export default function LibraryView() {
                 <button
                   className="secondary"
                   type="button"
-                  onClick={() => api.deleteCollection(c.id).then(loadCollections)}
+                  onClick={() =>
+                    api
+                      .deleteCollection(c.id)
+                      .then(loadCollections)
+                      .catch((e) => setErr(String(e)))
+                  }
                 >
                   Delete
                 </button>
@@ -619,7 +643,12 @@ export default function LibraryView() {
                 <button
                   className="secondary"
                   type="button"
-                  onClick={() => api.deleteAutoGroup(g.id).then(loadAutoGroups)}
+                  onClick={() =>
+                    api
+                      .deleteAutoGroup(g.id)
+                      .then(loadAutoGroups)
+                      .catch((e) => setErr(String(e)))
+                  }
                 >
                   Delete
                 </button>
@@ -681,7 +710,12 @@ export default function LibraryView() {
               <button
                 className="secondary"
                 type="button"
-                onClick={() => api.deleteShare(libId, s.group_id).then(() => api.listShares(libId).then(setShares))}
+                onClick={() =>
+                  api
+                    .deleteShare(libId, s.group_id)
+                    .then(() => api.listShares(libId).then(setShares))
+                    .catch((e) => setErr(String(e)))
+                }
               >
                 Remove
               </button>

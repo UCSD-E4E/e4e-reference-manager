@@ -453,7 +453,13 @@ export default function ItemView() {
 
       {viewUrl && (
         <div className="card">
-          <PdfViewer url={viewUrl} attachmentId={viewAtt ?? undefined} canEdit={canEdit} />
+          {/* keyed: another attachment starts fresh (page 1, its own annotations) */}
+          <PdfViewer
+            key={viewAtt}
+            url={viewUrl}
+            attachmentId={viewAtt ?? undefined}
+            canEdit={canEdit}
+          />
         </div>
       )}
 
@@ -467,7 +473,12 @@ export default function ItemView() {
               <button
                 className="secondary"
                 type="button"
-                onClick={() => api.deleteNote(n.id).then(reload)}
+                onClick={() =>
+                  api
+                    .deleteNote(n.id)
+                    .then(reload)
+                    .catch((e) => setErr(String(e)))
+                }
               >
                 Delete
               </button>
