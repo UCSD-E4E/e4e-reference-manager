@@ -87,13 +87,14 @@ async def fetch_pdf(
     item: Item = Depends(item_editor),
     session: AsyncSession = Depends(get_session),
 ):
-    """Find a legal open-access copy online (Unpaywall by DOI, then arXiv) and attach it."""
+    """Find a legal open-access copy online (Unpaywall by DOI, then arXiv, then the
+    reference's own URL) and attach it."""
     found = await oa_pdf.fetch_open_access_pdf(item.csl_json or {})
     if found is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            "No open-access PDF found (Unpaywall, arXiv). Paywalled papers can't be "
-            "fetched; upload the PDF instead.",
+            "No open-access PDF found (Unpaywall, arXiv, or the reference's URL). "
+            "Paywalled papers can't be fetched; upload the PDF instead.",
         )
     data, source, url = found
     att, created = await _attach_fetched_pdf(session, item, data)

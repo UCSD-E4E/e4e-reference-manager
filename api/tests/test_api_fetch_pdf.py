@@ -272,3 +272,61 @@ async def test_fetch_pdfs_failure_in_a_full_batch_still_returns_a_cursor(
     body = r.json()
     assert body["failed"] == 2 and body["checked"] == 2
     assert body["next_after"] is not None
+
+
+# ---------- the reference's own URL as a last resort ----------
+
+
+async def test_reference_url_is_the_last_candidate(net):
+    net.update(_unpaywall("10.1/x", "https://pub.example/x.pdf"))
+    csl = {"DOI": "10.1/x", "URL": "https://lab.example/hamilton2021.pdf"}
+    assert await oa.find_candidates(csl) == [
+        ("unpaywall", "https://pub.example/x.pdf"),
+        ("url", "https://lab.example/hamilton2021.pdf"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://arxiv.org/abs/2101.00001",  # covered by the arXiv candidate
+        "https://doi.org/10.1/x",  # covered by Unpaywall
+        "https://pub.example/x.pdf",  # already an Unpaywall candidate
+        "ftp://lab.example/x.pdf",
+        "not a url",
+    ],
+)
+async def test_reference_url_is_skipped_when_redundant_or_unusable(net, url):
+    net.update(_unpaywall("10.1/x", "https://pub.example/x.pdf"))
+    got = await oa.find_candidates({"DOI": "10.1/x", "URL": url})
+    assert [s for s, _ in got].count("url") == 0
+
+
+def test_a_url_alone_is_something_to_look_up():
+    assert oa.has_identifier({"URL": "https://lab.example/paper.pdf"})
+    assert not oa.has_identifier({"URL": "not a url"})
+
+
+async def test_fetch_uses_the_reference_url(client, library, net):
+    """No DOI, no arXiv id: a reference whose URL is a public PDF still gets it."""
+    net["https://lab.example/hamilton2021.pdf"] = (200, PDF, {})
+    item = await _add(client, library, URL="https://lab.example/hamilton2021.pdf")
+    r = await client.post(f"/items/{item['id']}/fetch-pdf")
+    assert r.status_code == 201
+    assert r.json()["source"] == "url"
+    assert r.json()["url"] == "https://lab.example/hamilton2021.pdf"
+
+
+async def test_fetch_ignores_a_reference_url_that_is_not_a_pdf(client, library, net):
+    net["https://lab.example/paper"] = (200, b"<html>abstract page</html>", {})
+    item = await _add(client, library, URL="https://lab.example/paper")
+    r = await client.post(f"/items/{item['id']}/fetch-pdf")
+    assert r.status_code == 404
+    assert "URL" in r.json()["detail"]
+
+
+async def test_fetch_never_follows_a_reference_url_to_an_internal_host(client, library, net):
+    net["http://internal.example/secret.pdf"] = (200, PDF, {})
+    item = await _add(client, library, URL="http://internal.example/secret.pdf")
+    r = await client.post(f"/items/{item['id']}/fetch-pdf")
+    assert r.status_code == 404

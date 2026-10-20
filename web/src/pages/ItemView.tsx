@@ -118,7 +118,7 @@ export default function ItemView() {
   };
 
   const findPdf = async () => {
-    setPdfMsg("Looking for an open-access copy (Unpaywall, arXiv)…");
+    setPdfMsg("Looking for an open-access copy (Unpaywall, arXiv, its URL)…");
     try {
       const r = await api.fetchPdf(itemId);
       const host = new URL(r.url).hostname;
@@ -419,7 +419,7 @@ export default function ItemView() {
               className="secondary"
               type="button"
               onClick={findPdf}
-              title="Fetch a legal open-access copy (Unpaywall by DOI, then arXiv)"
+              title="Fetch a legal open-access copy (Unpaywall by DOI, then arXiv, then its URL)"
             >
               Find PDF online
             </button>

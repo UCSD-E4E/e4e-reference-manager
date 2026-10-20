@@ -66,7 +66,8 @@ _ADD_EXTERNAL = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openW
 _CHECK_EXTERNAL = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=True
 )
-# Downloads PDFs from outside (Unpaywall, arXiv) and attaches them; re-runs are no-ops.
+# Downloads PDFs from outside (Unpaywall, arXiv, the reference's URL) and attaches them;
+# re-runs are no-ops.
 _FETCH_EXTERNAL = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
 )
@@ -367,9 +368,9 @@ async def get_pdf_url(ctx: Context, attachment_id: uuid.UUID) -> dict:
 
 @mcp.tool(annotations=_FETCH_EXTERNAL)
 async def find_pdf(ctx: Context, reference_id: uuid.UUID) -> dict:
-    """Find a legal open-access PDF for a reference (Unpaywall by DOI, then arXiv) and
-    attach it. Paywalled papers can't be fetched. Attaching the same file twice is a
-    no-op."""
+    """Find a legal open-access PDF for a reference (Unpaywall by DOI, then arXiv, then
+    the reference's own URL if it links straight to a PDF) and attach it. Paywalled
+    papers can't be fetched. Attaching the same file twice is a no-op."""
     return await _json(ctx, "POST", f"/items/{reference_id}/fetch-pdf")
 
 

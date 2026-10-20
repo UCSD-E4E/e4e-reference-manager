@@ -177,7 +177,7 @@ export const api = {
     }),
   exportAutoGroupUrl: (id: string) => `${API_URL}/auto-groups/${id}/export.bib`,
 
-  // Find a legal open-access copy online (Unpaywall, arXiv) and attach it.
+  // Find a legal open-access copy online (Unpaywall, arXiv, its URL) and attach it.
   fetchPdf: (itemId: string) =>
     req<FetchedPdf>(`/items/${itemId}/fetch-pdf`, { method: "POST" }),
   // One batch of a library-wide open-access PDF fetch; loop on next_after.
