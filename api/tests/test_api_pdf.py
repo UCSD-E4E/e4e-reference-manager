@@ -89,3 +89,60 @@ async def test_reextract_endpoint_refreshes_index(client, library, monkeypatch):
     assert (await client.get(f"/libraries/{library}/items", params={"q": "beta"})).json()[
         "total"
     ] == 1
+
+
+# ── Reading an attachment's extracted text (agents read papers through this) ──────────
+
+
+async def _attach(client, library, monkeypatch, *lines):
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", lambda *a, **k: None)
+    item = await _add(client, library, title="Reef paper")
+    r = await client.post(
+        f"/items/{item['id']}/attachments",
+        files={"file": ("p.pdf", _make_pdf(*lines), "application/pdf")},
+    )
+    return r.json()["id"]
+
+
+async def test_attachment_text_is_readable(client, library, monkeypatch):
+    att = await _attach(client, library, monkeypatch, "Symbiodinium thrive in warm water")
+    r = await client.get(f"/attachments/{att}/text")
+    assert r.status_code == 200
+    body = r.json()
+    assert "Symbiodinium" in body["text"]
+    assert body["offset"] == 0
+    assert body["total_chars"] == len(body["text"])
+    assert body["next_offset"] is None
+
+
+async def test_attachment_text_pages(client, library, monkeypatch):
+    att = await _attach(client, library, monkeypatch, "abcdefghijklmnopqrstuvwxyz")
+    full = (await client.get(f"/attachments/{att}/text")).json()["text"]
+    first = (await client.get(f"/attachments/{att}/text", params={"limit": 10})).json()
+    assert first["text"] == full[:10]
+    assert first["next_offset"] == 10
+    rest = (
+        await client.get(f"/attachments/{att}/text", params={"offset": 10, "limit": 1000})
+    ).json()
+    assert first["text"] + rest["text"] == full
+    assert rest["next_offset"] is None
+
+
+async def test_attachment_text_needs_library_access(
+    client, library, monkeypatch, make_user, login
+):
+    att = await _attach(client, library, monkeypatch, "secret findings")
+    login(await make_user("eve@e4e.local", "Eve"))
+    assert (await client.get(f"/attachments/{att}/text")).status_code == 404
+
+
+async def test_attachment_without_text(client, library, monkeypatch):
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", lambda *a, **k: None)
+    item = await _add(client, library, title="Scan")
+    r = await client.post(
+        f"/items/{item['id']}/attachments",
+        files={"file": ("scan.png", b"\x89PNG not text", "image/png")},
+    )
+    body = (await client.get(f"/attachments/{r.json()['id']}/text")).json()
+    assert body["text"] == ""
+    assert body["total_chars"] == 0

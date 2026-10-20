@@ -241,13 +241,15 @@ The **API tokens** page shows this command with your new token filled in.
 |---|---|
 | `list_libraries` | Libraries you can access, with your access level |
 | `search_references` | Hybrid / keyword / semantic search within a library |
-| `list_references`, `get_reference` | Browse a library; one reference in full, with notes |
+| `list_references`, `get_reference` | Browse a library; one reference in full, with notes and attached PDFs |
 | `list_collections`, `list_collection_references` | Browse collections |
 | `export_bibtex` | BibTeX for a library or a collection |
 | `add_reference` | Add by DOI, arXiv id, PMID, ISBN or URL (duplicates by DOI, or by title and year, are skipped) |
 | `import_bibtex` | Add BibTeX entries (duplicates are skipped; entries are validated) |
 | `add_note`, `create_collection`, `add_to_collection` | Annotate and organise |
 | `validate_reference` | Re-check a reference against Crossref/arXiv; replaces its stored verdict |
+| `get_pdf_text`, `get_pdf_url` | Read an attached PDF's text (paged), or get a short-lived download link |
+| `find_pdf`, `find_library_pdfs` | Find and attach legal open-access PDFs (Unpaywall, arXiv) for a reference or a library |
 
 - Every tool calls the REST API in-process with the caller's token. Permissions,
   validation and the activity history are the same as in the web app.

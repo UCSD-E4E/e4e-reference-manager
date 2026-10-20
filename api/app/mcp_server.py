@@ -30,6 +30,7 @@ from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
 from .auth import authenticate_token
+from .config import get_settings
 from .db import get_session
 
 mcp = MCPServer(
@@ -40,7 +41,9 @@ mcp = MCPServer(
         "BibTeX `citation_key`. Prefer search_references for finding papers. Before "
         "citing a reference you did not import yourself, check its `validation` status "
         "(verified / metadata_mismatch / not_found / unverifiable); validate_reference "
-        "re-checks it against Crossref/arXiv."
+        "re-checks it against Crossref/arXiv. PDFs: get_reference lists a reference's "
+        "attachments; read one with get_pdf_text, or fetch a missing open-access copy with "
+        "find_pdf."
     ),
 )
 
@@ -55,6 +58,10 @@ _ADD_EXTERNAL = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openW
 # "unverifiable"), so clients should treat it as an update.
 _CHECK_EXTERNAL = ToolAnnotations(
     readOnlyHint=False, destructiveHint=True, idempotentHint=True, openWorldHint=True
+)
+# Downloads PDFs from outside (Unpaywall, arXiv) and attaches them; re-runs are no-ops.
+_FETCH_EXTERNAL = ToolAnnotations(
+    readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
 )
 
 Limit = Annotated[int, Field(ge=1, le=200, description="Results per page (1-200)")]
@@ -122,6 +129,11 @@ def _authors(csl: dict) -> str:
     return "; ".join(n for n in names if n)
 
 
+def _is_pdf(att: dict) -> bool:
+    base = (att.get("content_type") or "").split(";")[0].strip().lower()
+    return base == "application/pdf" or att.get("filename", "").lower().endswith(".pdf")
+
+
 def _summary(item: dict) -> dict:
     csl = item.get("csl_json") or {}
     return {
@@ -134,6 +146,7 @@ def _summary(item: dict) -> dict:
         "doi": item["doi"],
         "container": csl.get("container-title"),
         "validation": (item.get("validation") or {}).get("status"),
+        "has_pdf": any(_is_pdf(a) for a in item.get("attachments") or []),
     }
 
 
@@ -205,6 +218,10 @@ async def get_reference(ctx: Context, reference_id: uuid.UUID) -> dict:
         "library_id": item["library_id"],
         "csl_json": item["csl_json"],
         "validation_details": item.get("validation"),
+        "attachments": [
+            {k: a[k] for k in ("id", "filename", "content_type", "size")}
+            for a in item.get("attachments") or []
+        ],
         "notes": [
             {"id": n["id"], "body": n["body"], "created_at": n["created_at"]} for n in notes
         ],
@@ -298,6 +315,58 @@ async def validate_reference(ctx: Context, reference_id: uuid.UUID) -> dict:
     (verified, metadata_mismatch, not_found or unverifiable) and stores it on the
     reference, replacing the previous one. Needs edit access."""
     return await _json(ctx, "POST", f"/items/{reference_id}/validate")
+
+
+# ── Tools: PDFs ─────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool(annotations=_READ)
+async def get_pdf_text(
+    ctx: Context,
+    attachment_id: uuid.UUID,
+    offset: Offset = 0,
+    max_chars: Annotated[int, Field(ge=1, le=100_000)] = 20_000,
+) -> dict:
+    """Read the text of a PDF attached to a reference (attachment ids come from
+    get_reference), `max_chars` at a time; continue from `next_offset` until it is null.
+    Scanned PDFs have no text."""
+    return await _json(
+        ctx,
+        "GET",
+        f"/attachments/{attachment_id}/text",
+        params={"offset": offset, "limit": max_chars},
+    )
+
+
+@mcp.tool(annotations=_READ)
+async def get_pdf_url(ctx: Context, attachment_id: uuid.UUID) -> dict:
+    """A short-lived signed URL to download a PDF attached to a reference."""
+    out = await _json(ctx, "GET", f"/attachments/{attachment_id}/url")
+    return {**out, "expires_in_seconds": get_settings().presign_expiry_seconds}
+
+
+@mcp.tool(annotations=_FETCH_EXTERNAL)
+async def find_pdf(ctx: Context, reference_id: uuid.UUID) -> dict:
+    """Find a legal open-access PDF for a reference (Unpaywall by DOI, then arXiv) and
+    attach it. Paywalled papers can't be fetched. Attaching the same file twice is a
+    no-op."""
+    return await _json(ctx, "POST", f"/items/{reference_id}/fetch-pdf")
+
+
+@mcp.tool(annotations=_FETCH_EXTERNAL)
+async def find_library_pdfs(
+    ctx: Context,
+    library_id: uuid.UUID,
+    after: uuid.UUID | None = None,
+    limit: Annotated[int, Field(ge=1, le=50)] = 10,
+) -> dict:
+    """Find and attach open-access PDFs for a library, one batch of `limit` references
+    at a time. References that already have a PDF are skipped. Repeat with
+    `after=next_after` until `next_after` is null."""
+    params: dict[str, Any] = {"limit": limit}
+    if after is not None:
+        params["after"] = str(after)
+    return await _json(ctx, "POST", f"/libraries/{library_id}/fetch-pdfs", params=params)
 
 
 # ── HTTP endpoint ───────────────────────────────────────────────────────────────────────

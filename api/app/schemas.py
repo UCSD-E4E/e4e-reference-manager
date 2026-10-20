@@ -65,6 +65,15 @@ class AttachmentOut(BaseModel):
 
 
 
+class AttachmentText(BaseModel):
+    """A page of an attachment's extracted text (empty for scans and non-PDFs)."""
+
+    text: str
+    offset: int
+    total_chars: int
+    next_offset: int | None  # pass back as `offset` for the next page; None = done
+
+
 class FetchedPdf(BaseModel):
     attachment: AttachmentOut
     source: str  # unpaywall | arxiv

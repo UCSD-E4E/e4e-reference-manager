@@ -15,7 +15,7 @@ from ..db import get_session
 from ..deps import item_editor, library_access_level, library_editor
 from ..models import _ACCESS_RANK, Attachment, Item, Library, User
 from ..pdf import extract_pdf_text
-from ..schemas import AttachmentOut, FetchedPdf, LibraryPdfFetch
+from ..schemas import AttachmentOut, AttachmentText, FetchedPdf, LibraryPdfFetch
 from ..storage import download_bytes, presigned_get_url, upload_bytes
 
 logger = logging.getLogger("refman")
@@ -219,6 +219,27 @@ async def attachment_url(
     att = await _owned_attachment(attachment_id, user, session)
     url = await run_in_threadpool(presigned_get_url, att.storage_key, None)
     return {"url": url, "content_type": att.content_type}
+
+
+@router.get("/attachments/{attachment_id}/text", response_model=AttachmentText)
+async def attachment_text(
+    attachment_id: uuid.UUID,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100_000, ge=1, le=1_000_000, description="Characters per page"),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """The text extracted from the attachment when it was added, a page at a time."""
+    att = await _owned_attachment(attachment_id, user, session)
+    text = att.text or ""
+    chunk = text[offset : offset + limit]
+    end = offset + len(chunk)
+    return AttachmentText(
+        text=chunk,
+        offset=offset,
+        total_chars=len(text),
+        next_offset=end if end < len(text) else None,
+    )
 
 
 @router.get("/attachments/{attachment_id}/download")
