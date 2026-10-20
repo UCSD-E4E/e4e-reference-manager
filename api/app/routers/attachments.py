@@ -147,8 +147,9 @@ async def fetch_pdfs(
     counts = dict.fromkeys(
         ("attached", "already_had_pdf", "not_found", "no_identifier", "failed"), 0
     )
-    # Snapshot what the network step needs: a failed item's rollback expires every
-    # loaded object, and async sessions can't lazily refresh them.
+    # Snapshot what the network step and the response need: a failed item's rollback
+    # expires every loaded object, and async sessions can't lazily refresh them.
+    next_after = items[-1].id if len(items) == limit else None
     todo: list[tuple[uuid.UUID, dict]] = []
     for item in items:
         csl = item.csl_json or {}
@@ -191,7 +192,7 @@ async def fetch_pdfs(
     return LibraryPdfFetch(
         checked=len(items),
         **counts,
-        next_after=items[-1].id if len(items) == limit else None,
+        next_after=next_after,
     )
 
 
