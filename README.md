@@ -270,6 +270,7 @@ The **API tokens** page shows this command with your new token filled in.
 | `validate_reference` | Re-check a reference against Crossref/arXiv; replaces its stored verdict |
 | `get_pdf_text`, `get_pdf_url` | Read an attached PDF's text (paged), or get a short-lived download link |
 | `find_pdf`, `find_library_pdfs` | Find and attach legal open-access PDFs (Unpaywall, arXiv, or the reference's own URL) for a reference or a library |
+| `create_pdf_upload` | One-time link (15 min, one PDF) to `curl` a local PDF to a reference, e.g. a paywalled paper you downloaded |
 
 - Every tool calls the REST API in-process with the caller's token. Permissions,
   validation and the activity history are the same as in the web app.

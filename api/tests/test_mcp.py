@@ -41,6 +41,7 @@ EXPECTED_TOOLS = {
     "delete_reference",
     "list_trash",
     "restore_reference",
+    "create_pdf_upload",
 }
 
 ATTENTION = (
@@ -618,3 +619,24 @@ async def test_delete_reference_respects_permissions(agent, db, make_user):
     assert "404" in err or "403" in err
     await db.refresh(item)
     assert item.deleted_at is None
+
+
+async def test_create_pdf_upload_then_curl_it(agent, db, alice, monkeypatch, client):
+    """The agent gets a one-time link and a curl command; the file is POSTed to the link
+    directly (here through the test client), never through the tool call."""
+    import fitz
+
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", lambda *a, **k: None)
+    lib_id, item_id, _ = await _paper_with_pdf(db, alice)
+    out = await _call(agent, "create_pdf_upload", reference_id=item_id)
+    assert out["curl"].startswith("curl -fsS -F file=@paper.pdf '")
+    assert out["url"] in out["curl"]
+    assert "expires_at" in out
+
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), "Downloaded paywalled copy")
+    path = out["url"].split("://", 1)[1].split("/", 1)[1]
+    r = await client.post(f"/{path}", files={"file": ("p.pdf", doc.tobytes(), "application/pdf")})
+    assert r.status_code == 201
+    ref = await _call(agent, "get_reference", reference_id=item_id)
+    assert len(ref["attachments"]) == 2

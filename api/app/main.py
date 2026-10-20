@@ -31,6 +31,7 @@ from .routers import (
     notes,
     search,
     trash,
+    uploads,
     validate,
 )
 from .storage import ensure_bucket
@@ -96,4 +97,5 @@ app.include_router(ingest.router)
 app.include_router(ml.router)
 app.include_router(validate.router)
 app.include_router(trash.router)
+app.include_router(uploads.router)
 mount_mcp(app)
