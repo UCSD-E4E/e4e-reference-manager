@@ -55,3 +55,29 @@ async def test_activity_feed_lists_events(client, library):
     kinds = {(e["entity_type"], e["operation"]) for e in feed}
     assert ("item", "create") in kinds
     assert ("note", "create") in kinds
+
+
+async def test_author_downgraded_to_view_can_no_longer_change_their_note(
+    client, make_user, login
+):
+    alice, bob = await make_user("alice@x"), await make_user("bob@x")
+    login(bob)
+    group = (await client.post("/groups", json={"slug": "team", "name": "Team"})).json()
+    login(alice)
+    lib = (await client.post("/libraries", json={"name": "Alice lib"})).json()["id"]
+    share = {"group_id": group["id"], "access_level": "edit"}
+    await client.post(f"/libraries/{lib}/shares", json=share)
+    item = await _make_item(client, lib)
+
+    login(bob)
+    note = (await client.post(f"/items/{item['id']}/notes", json={"body": "mine"})).json()
+
+    login(alice)
+    await client.post(f"/libraries/{lib}/shares", json={**share, "access_level": "view"})
+
+    login(bob)
+    assert (await client.patch(f"/notes/{note['id']}", json={"body": "x"})).status_code == 403
+    assert (await client.delete(f"/notes/{note['id']}")).status_code == 403
+
+    login(alice)  # the library's manager keeps the override
+    assert (await client.delete(f"/notes/{note['id']}")).status_code == 204

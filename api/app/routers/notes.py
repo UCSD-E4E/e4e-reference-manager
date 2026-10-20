@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..audit import record
 from ..auth import get_current_user
 from ..db import get_session
-from ..deps import _rank, item_editor, item_viewer, library_access_level
+from ..deps import item_editor, item_viewer, library_access_level, may_change_contribution
 from ..models import Item, Library, Note, User
 from ..schemas import NoteCreate, NoteOut
 
@@ -60,9 +60,10 @@ async def _editable_note(
     level = await library_access_level(session, user, lib) if lib else None
     if level is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Note not found")
-    # author may edit/delete own; library managers may edit/delete any
-    if note.author_id != user.id and _rank(level) < _rank("manage"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the author or a manager can do that")
+    if not may_change_contribution(level, is_author=note.author_id == user.id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only its author (with edit access) or a manager can do that"
+        )
     return note, item
 
 

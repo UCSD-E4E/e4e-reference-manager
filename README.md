@@ -198,10 +198,21 @@ REFMAN_OIDC_ISSUER=https://authentik.example.org/application/o/refman/
 REFMAN_OIDC_CLIENT_ID=...
 REFMAN_OIDC_CLIENT_SECRET=...
 REFMAN_OIDC_REDIRECT_URI=http://localhost:8000/auth/callback
+REFMAN_SESSION_SECRET=<long random string>
+# Optional: how long a web sign-in lasts before Authentik is asked again (default 168 = 7 days)
+REFMAN_SESSION_LIFETIME_HOURS=168
 ```
 
-Then the SPA's “login” flow redirects through Authentik. (Group/role mapping and a
-single-origin Caddy reverse proxy land in Phase 1.)
+Then the SPA's “login” flow redirects through Authentik. The API refuses to start if
+`REFMAN_DEV_AUTH` is on while `REFMAN_APP_BASE_URL` is `https://…`, or if dev auth is off
+but `REFMAN_SESSION_SECRET` is still the built-in dev value.
+
+- Each sign-in syncs groups from the `groups` claim: the user joins the groups it names
+  and leaves Authentik-sourced groups it no longer names (groups created in the app are
+  untouched). With `REFMAN_OIDC_ADMIN_GROUP` set, org admin follows that group both ways.
+- Writes made with the session cookie must come from the app's own origin (`Origin`, or
+  `Sec-Fetch-Site`/`Referer`): `REFMAN_POST_LOGIN_REDIRECT`, `REFMAN_APP_BASE_URL` or
+  `REFMAN_CORS_ORIGINS`. Bearer-token requests and one-time upload links are exempt.
 
 ## Trash
 

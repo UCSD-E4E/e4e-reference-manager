@@ -6,6 +6,9 @@ from functools import lru_cache
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Only for local dev: check_settings() refuses it once dev_auth is off.
+DEFAULT_SESSION_SECRET = "dev-only-change-me"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="REFMAN_", extra="ignore")
@@ -38,7 +41,11 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5:3b"
 
     # Sessions
-    session_secret: str = "dev-only-change-me"
+    session_secret: str = DEFAULT_SESSION_SECRET
+    # Absolute lifetime of a web sign-in: after this the user must go through Authentik
+    # again, so someone disabled there loses access within this window. (API tokens have
+    # their own expiry.)
+    session_lifetime_hours: int = Field(24 * 7, gt=0)
 
     # Auth (Authentik OIDC). When dev_auth is true, OIDC is bypassed with a fixed user.
     dev_auth: bool = True
@@ -56,6 +63,20 @@ class Settings(BaseSettings):
     oidc_redirect_uri: str = "http://localhost:8000/auth/callback"
     # Where to send the user after a successful login (the SPA)
     post_login_redirect: str = "http://localhost:5173"
+
+
+def check_settings(s: Settings) -> None:
+    """Refuse to run a deployment with local-dev auth settings (fail closed)."""
+    if s.dev_auth and s.app_base_url.startswith("https://"):
+        raise RuntimeError(
+            "REFMAN_DEV_AUTH is on but REFMAN_APP_BASE_URL is https: dev_auth signs every "
+            "visitor in as the dev user. Set REFMAN_DEV_AUTH=false for a deployment."
+        )
+    if not s.dev_auth and s.session_secret == DEFAULT_SESSION_SECRET:
+        raise RuntimeError(
+            "REFMAN_SESSION_SECRET (session_secret) is still the built-in dev value, so "
+            "anyone could forge a session cookie. Set it to a long random secret."
+        )
 
 
 @lru_cache

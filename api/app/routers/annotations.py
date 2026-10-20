@@ -1,7 +1,8 @@
 """Phase 4: PDF annotations (highlights + comments) anchored to an Attachment.
 
-RBAC mirrors notes: library `view` to read, `edit` to create, author-or-manager to edit
-or delete. Mutations are written to the audit log under entity_type "annotation"."""
+RBAC mirrors notes: library `view` to read, `edit` to create; to edit or delete, the author
+needs `edit` access and a manager may change anyone's. Mutations are written to the audit
+log under entity_type "annotation"."""
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,11 +12,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..audit import record
 from ..auth import get_current_user
 from ..db import get_session
-from ..deps import _rank, library_access_level
+from ..deps import _rank, library_access_level, may_change_contribution
 from ..models import Annotation, Attachment, Item, Library, User
 from ..schemas import AnnotationCreate, AnnotationOut, AnnotationUpdate
 
 router = APIRouter(tags=["annotations"])
+
+
+def _snapshot(ann: Annotation) -> dict:
+    return {
+        "page": ann.page,
+        "rects": ann.rects,
+        "color": ann.color,
+        "quote": ann.quote,
+        "comment": ann.comment,
+    }
 
 
 async def _attachment_for(
@@ -44,9 +55,10 @@ async def _editable_annotation(
     level = await library_access_level(session, user, lib) if lib else None
     if level is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Annotation not found")
-    # author may edit/delete own; library managers may edit/delete any
-    if ann.author_id != user.id and _rank(level) < _rank("manage"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the author or a manager can do that")
+    if not may_change_contribution(level, is_author=ann.author_id == user.id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only its author (with edit access) or a manager can do that"
+        )
     return ann, item
 
 
@@ -110,6 +122,7 @@ async def update_annotation(
     session: AsyncSession = Depends(get_session),
 ):
     ann, item = await _editable_annotation(annotation_id, user, session)
+    before = _snapshot(ann)
     if payload.color is not None:
         ann.color = payload.color
     if payload.comment is not None:
@@ -124,6 +137,8 @@ async def update_annotation(
         entity_id=ann.id,
         operation="update",
         summary="Edited an annotation",
+        before=before,
+        after=_snapshot(ann),
     )
     await session.commit()
     await session.refresh(ann)
