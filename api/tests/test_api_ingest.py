@@ -102,6 +102,17 @@ async def test_ingest_dedups_within_one_batch(client, library, monkeypatch):
     assert [x["status"] for x in r["results"]] == ["created", "duplicate"]
 
 
+async def test_ingest_same_title_and_year_with_another_doi_is_created(
+    client, library, monkeypatch
+):
+    async def fake_fetch(query):
+        return [dict(CSL_PAPER), dict(CSL_PAPER, DOI="10.2/other")]
+
+    monkeypatch.setattr("app.routers.ingest.fetch_csl", fake_fetch)
+    r = (await client.post(f"/libraries/{library}/ingest", json={"query": "x"})).json()
+    assert [x["status"] for x in r["results"]] == ["created", "created"]
+
+
 async def test_unreachable_translation_server_names_the_error(monkeypatch):
     """Timeouts stringify to "": the message must still say what went wrong."""
     import httpx

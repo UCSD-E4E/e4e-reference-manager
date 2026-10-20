@@ -71,6 +71,14 @@ async def test_preview_flags_repeats_within_the_paste(client, library, registrar
     assert entries[1]["duplicate"] == {"item_id": None, "entry_index": 0, "matched_on": "doi"}
 
 
+async def test_preview_does_not_flag_same_title_with_another_doi(client, library, registrars):
+    other = REAL.replace("{real,", "{other,").replace("10.1/real", "10.2/other")
+    await client.post(f"/libraries/{library}/import/text", json={"bibtex": other})
+
+    entries = await _preview(client, library, REAL + "\n" + REAL.replace("10.1/real", "10.3/x"))
+    assert [e["duplicate"] for e in entries] == [None, None]
+
+
 async def test_add_selected_entries_stores_their_verdicts(client, library, registrars):
     await _preview(client, library)
     registrars.clear()

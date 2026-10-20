@@ -69,3 +69,32 @@ async def test_different_paper_reusing_a_key_is_kept_and_flagged(client, library
     assert r["imported"] == 1
     assert r["key_collisions"] == ["smith2020"]
     assert await _count(client, library) == 2
+
+
+E1 = b"@article{e1,title={Editorial},year={2020},doi={10.1/a}}\n"
+E2 = b"@article{e2,title={Editorial},year={2020},doi={10.2/b}}\n"
+
+
+async def test_same_title_and_year_with_different_dois_is_not_a_duplicate(client, library):
+    await _import(client, library, "a.bib", E1)
+    r = await _import(client, library, "b.bib", E2)
+
+    assert r["imported"] == 1
+    assert r["duplicates"] == []
+
+
+async def test_different_dois_within_one_file_are_both_imported(client, library):
+    assert (await _import(client, library, "a.bib", E1 + E2))["imported"] == 2
+
+
+async def test_same_title_without_a_year_is_not_a_duplicate(client, library):
+    bib = b"@misc{e1,title={Editorial}}\n@misc{e2,title={Editorial}}\n"
+    assert (await _import(client, library, "a.bib", bib))["imported"] == 2
+
+
+async def test_doi_less_entry_still_matches_on_title(client, library):
+    r = await _import(client, library, "a.bib", E1 + E2)
+    assert r["imported"] == 2
+    r = await _import(client, library, "b.bib", b"@article{e3,title={Editorial},year={2020}}\n")
+    assert r["imported"] == 0
+    assert r["duplicates"][0]["matched_on"] == "title"

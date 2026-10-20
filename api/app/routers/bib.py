@@ -11,7 +11,7 @@ from .. import validation
 from ..bibtex import ParsedEntry, build_bibtex, parse_bibtex, year_from_csl
 from ..db import get_session
 from ..deps import library_access_level, library_editor, library_viewer
-from ..dedupe import csl_match_keys, library_index
+from ..dedupe import DuplicateIndex, library_index
 from ..models import BibFile, Item, Library, User
 from ..routers.items import _denormalize
 from ..schemas import (
@@ -29,10 +29,6 @@ router = APIRouter(tags=["bibtex"])
 # Paste previews validate each entry against Crossref/arXiv; cap the work per request.
 MAX_PASTE_ENTRIES = 200
 VALIDATE_CONCURRENCY = 4
-
-
-def _entry_match_keys(entry: ParsedEntry) -> list[tuple[str, object]]:
-    return csl_match_keys(entry.csl_json)
 
 
 def _parse_or_400(raw: str) -> list[ParsedEntry]:
@@ -57,17 +53,15 @@ async def _import_entries(
     session.add(bib_file)
     await session.flush()  # assign bib_file.id
 
-    keys, owner = await library_index(session, lib.id)
+    keys, index = await library_index(session, lib.id)
     imported: list[tuple[Item, dict]] = []
     duplicates: list[ImportDuplicate] = []
     collisions: list[str] = []
     for entry in entries:
-        mkeys = _entry_match_keys(entry)
-        hit = next((k for k in mkeys if k in owner), None)
-        if hit is not None:
+        if hit := index.find_csl(entry.csl_json):
             duplicates.append(
                 ImportDuplicate(
-                    citation_key=entry.citation_key, item_id=owner[hit], matched_on=hit[0]
+                    citation_key=entry.citation_key, item_id=hit[1], matched_on=hit[0]
                 )
             )
             continue
@@ -85,8 +79,7 @@ async def _import_entries(
         _denormalize(item, entry.csl_json)
         session.add(item)
         await session.flush()  # assign item.id for later duplicates of it
-        for k in mkeys:
-            owner[k] = item.id
+        index.add_csl(entry.csl_json, item.id)
         imported.append((item, entry.csl_json))
 
     if validate:
@@ -142,19 +135,17 @@ async def preview_pasted_bibtex(
             "use Import .bib for larger files.",
         )
 
-    keys, owner = await library_index(session, lib.id)
-    seen: dict[tuple[str, object], int] = {}
+    keys, index = await library_index(session, lib.id)
+    seen = DuplicateIndex()  # the paste's earlier entries, owned by their positions
     rows: list[PastePreviewEntry] = []
     for i, entry in enumerate(entries):
-        mkeys = _entry_match_keys(entry)
         duplicate = None
-        if hit := next((k for k in mkeys if k in owner), None):
-            duplicate = PasteDuplicate(item_id=owner[hit], matched_on=hit[0])
-        elif hit := next((k for k in mkeys if k in seen), None):
-            duplicate = PasteDuplicate(entry_index=seen[hit], matched_on=hit[0])
+        if hit := index.find_csl(entry.csl_json):
+            duplicate = PasteDuplicate(item_id=hit[1], matched_on=hit[0])
+        elif hit := seen.find_csl(entry.csl_json):
+            duplicate = PasteDuplicate(entry_index=hit[1], matched_on=hit[0])
         else:
-            for k in mkeys:
-                seen.setdefault(k, i)
+            seen.add_csl(entry.csl_json, i)
         csl = entry.csl_json
         rows.append(
             PastePreviewEntry(

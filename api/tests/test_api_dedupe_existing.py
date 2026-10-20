@@ -78,3 +78,87 @@ async def test_three_copies_collapse_and_non_duplicates_survive(client, library)
 async def test_nothing_to_merge(client, library):
     await _add(client, library, title="One")
     assert (await client.post(f"/libraries/{library}/dedupe")).json() == {"merged": 0, "groups": []}
+
+
+def _make_pdf(text: str) -> bytes:
+    import fitz  # PyMuPDF
+
+    doc = fitz.open()
+    doc.new_page().insert_text((72, 72), text)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+async def _attach_annotated_pdf(client, item_id, text):
+    r = await client.post(
+        f"/items/{item_id}/attachments",
+        files={"file": ("p.pdf", _make_pdf(text), "application/pdf")},
+    )
+    assert r.status_code == 201
+    att = r.json()["id"]
+    r = await client.post(
+        f"/attachments/{att}/annotations",
+        json={"page": 1, "rects": [], "comment": "kept highlight"},
+    )
+    assert r.status_code == 201
+    return att
+
+
+async def _assert_pdf_moved(client, library, keep, att, term):
+    kept = (await client.get(f"/items/{keep['id']}")).json()
+    assert [a["id"] for a in kept["attachments"]] == [att]
+    anns = (await client.get(f"/attachments/{att}/annotations")).json()
+    assert [a["comment"] for a in anns] == ["kept highlight"]
+    s = (await client.get(f"/libraries/{library}/items", params={"q": term})).json()
+    assert [i["id"] for i in s["items"]] == [keep["id"]]  # the moved PDF text is searchable
+
+
+async def test_dedupe_keeps_the_duplicates_pdf_and_annotations(client, library, monkeypatch):
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", lambda *a, **k: None)
+    keep = await _add(client, library, title="Reefs", DOI="10.1/x")
+    dup = await _add(client, library, title="Reefs", DOI="10.1/X")
+    att = await _attach_annotated_pdf(client, dup["id"], "zooxanthellae bleaching")
+
+    assert (await client.post(f"/libraries/{library}/dedupe")).json()["merged"] == 1
+    await _assert_pdf_moved(client, library, keep, att, "zooxanthellae")
+
+
+async def test_merge_endpoint_keeps_the_duplicates_pdf(client, library, monkeypatch):
+    monkeypatch.setattr("app.routers.attachments.upload_bytes", lambda *a, **k: None)
+    keep = await _add(client, library, title="Keep")
+    dup = await _add(client, library, title="Dup")
+    att = await _attach_annotated_pdf(client, dup["id"], "scleractinia spawning")
+
+    r = await client.post(f"/items/{keep['id']}/merge/{dup['id']}")
+    assert r.status_code == 200
+    assert [a["id"] for a in r.json()["attachments"]] == [att]
+    await _assert_pdf_moved(client, library, keep, att, "scleractinia")
+
+
+async def test_same_title_and_year_but_different_dois_are_not_merged(client, library):
+    year = {"date-parts": [[2020]]}
+    await _add(client, library, title="Editorial", DOI="10.1/a", issued=year)
+    await _add(client, library, title="Editorial", DOI="10.2/b", issued=year)
+
+    assert (await client.post(f"/libraries/{library}/dedupe")).json()["merged"] == 0
+    assert len(await _items(client, library)) == 2
+
+
+async def test_same_title_without_a_year_is_not_merged(client, library):
+    await _add(client, library, title="Editorial")
+    await _add(client, library, title="Editorial")
+
+    assert (await client.post(f"/libraries/{library}/dedupe")).json()["merged"] == 0
+
+
+async def test_a_doi_less_copy_does_not_bridge_two_different_dois(client, library):
+    """A (no DOI) matches B (DOI a) on title; C (DOI b) must not then join them via A."""
+    year = {"date-parts": [[2020]]}
+    a = await _add(client, library, title="Editorial", issued=year)
+    b = await _add(client, library, title="Editorial", DOI="10.1/a", issued=year)
+    c = await _add(client, library, title="Editorial", DOI="10.2/b", issued=year)
+
+    r = (await client.post(f"/libraries/{library}/dedupe")).json()
+    assert r["groups"] == [{"kept": a["id"], "merged": [b["id"]], "matched_on": "title"}]
+    assert {i["id"] for i in await _items(client, library)} == {a["id"], c["id"]}
