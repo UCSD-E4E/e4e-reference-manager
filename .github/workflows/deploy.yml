@@ -12,7 +12,8 @@ name: Deploy
 # The converge is a TRIGGER, not a CI gate: `reference-manager-selfupdate` stops the
 # GitHub runner mid-switch and restarts it after, so the job starts the unit with
 # `--no-block`. `verify-incus` is the deploy gate: it asserts the pins the slot
-# actually deployed match main's, and that the stack unit came up.
+# actually deployed match main's, that the stack unit came up, and that the API and
+# the web root answer through the slot's traefik.
 #
 # Do NOT "verify" a deploy with `systemctl status reference-manager-selfupdate` — its
 # exit code is not a deploy signal: `switch-to-configuration` exits 4 if any unit is
@@ -113,4 +114,36 @@ jobs:
             echo "::error title=Deploy verify::pins match but the compose stack unit is $state/$result"
             exit 1
           fi
-          echo "### ✅ deploy verified: $(wc -l < /tmp/expected-pins.txt) pins match main, stack $state/$result" >> "$GITHUB_STEP_SUMMARY"
+          echo "### ✅ pins verified: $(wc -l < /tmp/expected-pins.txt) pins match main, stack $state/$result" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert the site and the API answer through traefik
+        # Result=success only means `up -d` exited 0 — it says nothing about an API that
+        # crash-loops on start (restart: unless-stopped hides it) or a traefik that
+        # never started. So hit the real path: the slot's own :443 (the inner traefik),
+        # with the public Host so the routers match. -k: it serves the internal
+        # reference-manager.vm cert (fleet CA), not one for bib.krg.ucsd.edu.
+        # curl by absolute path: the runner's PATH has no curl, but the system profile
+        # does (NixOS requiredPackages), same as systemctl above. Not `docker`: the
+        # runner isn't in the docker group, by design.
+        run: |
+          set -uo pipefail
+          CURL=/run/current-system/sw/bin/curl
+          probe() {
+            "$CURL" -fsS -k --max-time 10 --resolve bib.krg.ucsd.edu:443:127.0.0.1 \
+              -o /dev/null -w '%{http_code}' "https://bib.krg.ucsd.edu$1"
+          }
+
+          # Up to ~10 min: the converge just force-recreated every container, and the
+          # API runs its migrations before it listens.
+          for i in $(seq 1 40); do
+            api=$(probe /api/health 2>/dev/null || true)
+            web=$(probe / 2>/dev/null || true)
+            echo "[$i/40] /api/health -> ${api:-no answer}   / -> ${web:-no answer}"
+            if [ "$api" = 200 ] && [ "$web" = 200 ]; then
+              echo "### ✅ deploy verified: /api/health and / answer 200 through traefik" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error title=Deploy verify::the API (/api/health) or the web root did not answer 200 through traefik within 10 min; check 'docker compose ps' / 'docker logs' for api on the slot."
+          exit 1
