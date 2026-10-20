@@ -3,6 +3,7 @@ reference library. Driven end-to-end with the MCP SDK's own client over an in-pr
 transport, so this exercises the real protocol, token check and REST permissions.
 External services (translation-server, Crossref) are monkeypatched."""
 import json
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
@@ -36,6 +37,7 @@ EXPECTED_TOOLS = {
     "get_pdf_url",
     "find_pdf",
     "find_library_pdfs",
+    "update_reference",
 }
 
 ATTENTION = (
@@ -351,9 +353,9 @@ async def test_tool_annotations_are_honest(agent):
         "get_pdf_text",
         "get_pdf_url",
     }
-    # validate_reference overwrites the stored verdict: it is an update, not a pure add.
-    assert tools["validate_reference"].destructive_hint is True
-    assert not any(a.destructive_hint for n, a in tools.items() if n != "validate_reference")
+    # These overwrite stored data (metadata; the validation verdict): updates, not adds.
+    updates = {"update_reference", "validate_reference"}
+    assert {n for n, a in tools.items() if a.destructive_hint} == updates
 
 
 # ── PDFs ────────────────────────────────────────────────────────────────────────────────
@@ -465,3 +467,103 @@ async def test_find_library_pdfs(agent, db, alice, monkeypatch):
     assert out["checked"] == 1
     assert out["already_had_pdf"] == 1
     assert out["next_after"] is None
+
+
+# ── Editing ─────────────────────────────────────────────────────────────────────────────
+
+
+async def _imported(agent, db, alice) -> tuple[str, dict]:
+    lib_id = await _new_library(db, alice)
+    await _call(agent, "import_bibtex", library_id=lib_id, bibtex=ATTENTION)
+    [ref] = (await _call(agent, "list_references", library_id=lib_id))["references"]
+    return lib_id, await _call(agent, "get_reference", reference_id=ref["id"])
+
+
+async def test_update_reference_merges_fields_and_revalidates(agent, db, alice, registrars):
+    _, ref = await _imported(agent, db, alice)
+    assert ref["version"] == 1
+
+    out = await _call(
+        agent,
+        "update_reference",
+        reference_id=ref["id"],
+        version=ref["version"],
+        changes={"title": "A Paper That Does Not Exist", "volume": "30", "journal": None},
+    )
+    assert out["version"] == 2
+    assert out["title"] == "A Paper That Does Not Exist"
+    assert out["validation"] == "metadata_mismatch"  # re-checked: DOI is Attention's
+
+    full = await _call(agent, "get_reference", reference_id=ref["id"])
+    assert full["csl_json"]["volume"] == "30"
+    assert full["csl_json"]["container-title"] == "NeurIPS"  # untouched fields kept
+    assert full["authors"] == "Vaswani, Ashish; Shazeer, Noam"
+
+
+async def test_update_reference_null_removes_a_field(agent, db, alice, registrars):
+    _, ref = await _imported(agent, db, alice)
+    out = await _call(
+        agent, "update_reference", reference_id=ref["id"], version=1, changes={"DOI": None}
+    )
+    assert out["doi"] is None
+    full = await _call(agent, "get_reference", reference_id=ref["id"])
+    assert "DOI" not in full["csl_json"]
+
+
+async def test_update_reference_rejects_stale_version(agent, db, alice, registrars):
+    _, ref = await _imported(agent, db, alice)
+    await _call(
+        agent, "update_reference", reference_id=ref["id"], version=1, changes={"volume": "1"}
+    )
+    err = await _call_error(
+        agent, "update_reference", reference_id=ref["id"], version=1, changes={"volume": "2"}
+    )
+    assert "409" in err
+    assert "get_reference" in err  # tells the agent how to recover
+
+
+async def test_update_reference_can_change_citation_key(agent, db, alice, registrars):
+    _, ref = await _imported(agent, db, alice)
+    out = await _call(
+        agent, "update_reference", reference_id=ref["id"], version=1, citation_key="vaswani2017attn"
+    )
+    assert out["citation_key"] == "vaswani2017attn"
+
+
+async def test_update_reference_needs_some_change(agent, db, alice, registrars):
+    _, ref = await _imported(agent, db, alice)
+    err = await _call_error(agent, "update_reference", reference_id=ref["id"], version=1)
+    assert "Nothing to change" in err
+
+
+async def test_update_survives_a_failed_revalidation(agent, db, alice, registrars, monkeypatch):
+    """The edit is saved even if the follow-up check can't run; the agent is told."""
+    _, ref = await _imported(agent, db, alice)
+
+    async def broken(csl):
+        raise RuntimeError("crossref down")
+
+    monkeypatch.setattr("app.validation.validate_item_csl", broken)
+    out = await _call(
+        agent, "update_reference", reference_id=ref["id"], version=1, changes={"volume": "9"}
+    )
+    assert out["version"] == 2
+    assert out["validation"] == "error"
+    assert "500" in out["validation_error"]
+
+
+async def test_update_is_recorded_in_history(agent, db, alice, registrars):
+    from sqlalchemy import select
+
+    from app.models import AuditEvent
+
+    _, ref = await _imported(agent, db, alice)
+    await _call(
+        agent, "update_reference", reference_id=ref["id"], version=1, changes={"volume": "3"}
+    )
+    ops = (
+        await db.execute(
+            select(AuditEvent.operation).where(AuditEvent.entity_id == uuid.UUID(ref["id"]))
+        )
+    ).scalars().all()
+    assert "update" in ops
