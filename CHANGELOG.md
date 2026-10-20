@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.14.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.13.0...v1.14.0) (2026-10-20)
+
+
+### Features
+
+* find PDFs at the reference's own URL ([cbafaef](https://github.com/UCSD-E4E/e4e-reference-manager/commit/cbafaefc7bdd38f988eef9d4bbd5e9c3b9f5f054))
+* find PDFs at the reference's own URL ([1cbb10f](https://github.com/UCSD-E4E/e4e-reference-manager/commit/1cbb10f9ea413d3674b4a103e7e24b1ab4d01783))
+
 ## [1.13.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.12.0...v1.13.0) (2026-10-20)
 
 
