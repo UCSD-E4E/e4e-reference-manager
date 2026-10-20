@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.4](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.3...v1.15.4) (2026-10-20)
+
+
+### Bug Fixes
+
+* drop NUL bytes from extracted PDF text so such PDFs can be attached ([843a787](https://github.com/UCSD-E4E/e4e-reference-manager/commit/843a787cf5e0f0492197a2964975883ae6147961))
+* drop NUL bytes from extracted PDF text so such PDFs can be attached ([db04b40](https://github.com/UCSD-E4E/e4e-reference-manager/commit/db04b40db1a9fd103cb969fbc1f78c150f605fc5))
+
 ## [1.15.3](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.2...v1.15.3) (2026-10-20)
 
 
