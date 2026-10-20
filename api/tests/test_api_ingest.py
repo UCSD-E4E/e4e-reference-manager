@@ -135,3 +135,91 @@ async def test_unreachable_translation_server_names_the_error(monkeypatch):
     monkeypatch.setattr(ingest.httpx, "AsyncClient", Timeout)
     with pytest.raises(ingest.IngestError, match="ReadTimeout"):
         await ingest.fetch_csl("10.1/x")
+
+
+# ---------- fetch_csl against a mocked translation-server ----------
+
+
+@pytest.fixture
+def translation(monkeypatch):
+    """Mock translation-server: fill `routes` {path: (status, body)}; requests are kept
+    in `seen`. Every host "resolves" publicly except internal.example."""
+    import httpx
+
+    from app import ingest
+
+    state = {"routes": {}, "seen": []}
+
+    def handler(request):
+        state["seen"].append(request)
+        status, body = state["routes"].get(request.url.path, (404, b""))
+        if isinstance(body, Exception):
+            raise body
+        return httpx.Response(status, content=body)
+
+    monkeypatch.setattr(ingest, "_transport", lambda: httpx.MockTransport(handler))
+    monkeypatch.setattr(
+        ingest,
+        "public_addresses",
+        lambda host: [] if host == "internal.example" else ["203.0.113.10"],
+    )
+    return state
+
+
+@pytest.mark.parametrize(
+    "url", ["http://internal.example/admin", "https://internal.example:8443/x", "http://[::1"]
+)
+async def test_urls_to_internal_hosts_never_reach_translation_server(translation, url):
+    from app.ingest import IngestError, fetch_csl
+
+    with pytest.raises(IngestError, match="URL"):
+        await fetch_csl(url)
+    assert translation["seen"] == []
+
+
+async def test_public_urls_go_to_translation_server(translation):
+    import json
+
+    from app.ingest import fetch_csl
+
+    translation["routes"]["/web"] = (200, json.dumps([{"itemType": "webpage"}]).encode())
+    translation["routes"]["/export"] = (200, json.dumps([{"title": "Page"}]).encode())
+    assert await fetch_csl("https://lab.example/page") == [{"title": "Page"}]
+    assert [r.url.path for r in translation["seen"]] == ["/web", "/export"]
+
+
+@pytest.mark.parametrize("path", ["/search", "/export"])
+async def test_non_json_from_translation_server_is_an_ingest_error(translation, path):
+    import json
+
+    from app.ingest import IngestError, fetch_csl
+
+    translation["routes"]["/search"] = (200, json.dumps([{"itemType": "x"}]).encode())
+    translation["routes"]["/export"] = (200, b"[]")
+    translation["routes"][path] = (200, b"<html>oops</html>")
+    with pytest.raises(IngestError):
+        await fetch_csl("10.1/x")
+
+
+async def test_export_network_error_is_an_ingest_error(translation):
+    import json
+
+    import httpx
+
+    from app.ingest import IngestError, fetch_csl
+
+    translation["routes"]["/search"] = (200, json.dumps([{"itemType": "x"}]).encode())
+    translation["routes"]["/export"] = (0, httpx.ReadTimeout(""))
+    with pytest.raises(IngestError, match="ReadTimeout"):
+        await fetch_csl("10.1/x")
+
+
+async def test_ingesting_an_internal_url_is_a_502_with_a_clear_message(
+    client, library, translation
+):
+    r = await client.post(
+        f"/libraries/{library}/ingest", json={"query": "http://internal.example/x"}
+    )
+    assert r.status_code == 502
+    assert "public" in str(r.json())
+    assert translation["seen"] == []

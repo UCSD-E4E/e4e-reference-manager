@@ -1,6 +1,11 @@
-"""Find a legal open-access PDF online (Unpaywall by DOI, then arXiv) and attach it.
+"""Find a legal open-access PDF online (Unpaywall by DOI, then arXiv, then the
+reference's own URL) and attach it.
 
-No network: the HTTP client is an httpx.MockTransport and DNS resolution is stubbed."""
+No network: the HTTP client is an httpx.MockTransport and DNS resolution is stubbed.
+Downloads connect to the address the stub "resolved" (FAKE_IP) with the original name in
+the Host header; the mock transport maps that back to the URL the routes are keyed by.
+"""
+import asyncio
 import hashlib
 
 import fitz  # PyMuPDF
@@ -19,11 +24,31 @@ def _pdf(text="Open access paper body") -> bytes:
 PDF = _pdf()
 
 
-def _routes(routes: dict):
-    """Serve `routes` {url: (status, body, headers)}; anything else 404s."""
+FAKE_IP = "203.0.113.10"  # what every public host "resolves" to
+
+
+class Net(dict):
+    """{url: (status, body, headers)} routes, plus every request the server saw."""
+
+    def __init__(self):
+        super().__init__()
+        self.seen: list[httpx.Request] = []
+
+    def urls(self) -> list[str]:
+        return [_logical_url(r) for r in self.seen]
+
+
+def _logical_url(request: httpx.Request) -> str:
+    """The URL as the caller meant it: the Host header names the server."""
+    return str(request.url.copy_with(netloc=request.headers["host"].encode()))
+
+
+def _routes(routes: Net):
+    """Serve `routes`; anything else 404s."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        status, body, headers = routes.get(str(request.url), (404, b"", {}))
+        routes.seen.append(request)
+        status, body, headers = routes.get(_logical_url(request), (404, b"", {}))
         return httpx.Response(status, content=body, headers=headers)
 
     return httpx.MockTransport(handler)
@@ -32,11 +57,18 @@ def _routes(routes: dict):
 @pytest.fixture
 def net(monkeypatch):
     """Install a fake internet; returns a dict to fill with routes."""
-    routes: dict = {}
+    routes = Net()
     monkeypatch.setattr(oa, "_transport", lambda: _routes(routes))
-    monkeypatch.setattr(oa, "_resolves_to_public", lambda host: host != "internal.example")
+    monkeypatch.setattr(
+        oa, "_public_address", lambda host: None if host == "internal.example" else FAKE_IP
+    )
     monkeypatch.setattr("app.routers.attachments.upload_bytes", lambda *a, **k: None)
     return routes
+
+
+def _streaming(body):
+    """A transport whose every response streams `body` (an async iterator factory)."""
+    return lambda: httpx.MockTransport(lambda request: httpx.Response(200, content=body()))
 
 
 def _unpaywall(doi, *urls):
@@ -72,7 +104,69 @@ async def test_download_follows_redirects_but_never_to_internal_hosts(net):
     assert await oa.download_pdf("https://pub.example/a") == PDF
 
     net["https://pub.example/evil"] = (302, b"", {"location": "http://internal.example/x"})
+    net["http://internal.example/x"] = (200, PDF, {})
     assert await oa.download_pdf("https://pub.example/evil") is None
+    assert "http://internal.example/x" not in net.urls()
+
+
+async def test_download_connects_to_the_address_it_validated(net):
+    """No second DNS lookup (rebinding): the request goes to the checked IP, while the
+    Host header and TLS (SNI + certificate check) still use the original name."""
+    net["https://pub.example/x.pdf"] = (200, PDF, {})
+    assert await oa.download_pdf("https://pub.example/x.pdf") == PDF
+    (req,) = net.seen
+    assert req.url.host == FAKE_IP
+    assert req.headers["host"] == "pub.example"
+    assert req.extensions["sni_hostname"] == "pub.example"
+
+
+async def test_download_rejects_html_without_reading_all_of_it(net, monkeypatch):
+    sent = []
+
+    async def endless_html():
+        for _ in range(1000):
+            sent.append(1)
+            yield b"<html>" + b"x" * 1000
+
+    monkeypatch.setattr(oa, "_transport", _streaming(endless_html))
+    assert await oa.download_pdf("https://pub.example/x.pdf") is None
+    assert len(sent) < 5
+
+
+async def test_download_has_an_overall_deadline(net, monkeypatch):
+    async def trickle():
+        yield b"%PDF-1.4"
+        while True:  # each read is quick, so per-read timeouts never fire
+            await asyncio.sleep(0.01)
+            yield b" "
+
+    monkeypatch.setattr(oa, "DOWNLOAD_DEADLINE", 0.2)
+    monkeypatch.setattr(oa, "_transport", _streaming(trickle))
+    assert await asyncio.wait_for(oa.download_pdf("https://pub.example/x.pdf"), 5) is None
+
+
+@pytest.mark.parametrize(
+    "addrs, ok",
+    [
+        (["93.184.216.34"], True),
+        (["93.184.216.34", "10.0.0.5"], False),  # one private answer is enough to refuse
+        (["127.0.0.1"], False),
+        (["169.254.169.254"], False),  # cloud metadata
+        (["::ffff:127.0.0.1"], False),  # IPv4-mapped loopback
+        (["64:ff9b::a00:1"], False),  # NAT64 of 10.0.0.1
+        (["fe80::1%eth0"], False),
+        ([], False),
+    ],
+)
+def test_public_address_checks_every_answer(monkeypatch, addrs, ok):
+    from app import netguard
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        return [(0, 0, 0, "", (addr, 0)) for addr in addrs]
+
+    monkeypatch.setattr(netguard.socket, "getaddrinfo", fake_getaddrinfo)
+    assert (oa._public_address("pub.example") is not None) is ok
+    assert bool(netguard.public_addresses("pub.example")) is ok
 
 
 async def test_download_rejects_non_http_and_oversize(net, monkeypatch):
@@ -330,3 +424,64 @@ async def test_fetch_never_follows_a_reference_url_to_an_internal_host(client, l
     item = await _add(client, library, URL="http://internal.example/secret.pdf")
     r = await client.post(f"/items/{item['id']}/fetch-pdf")
     assert r.status_code == 404
+    assert net.seen == []  # refused before any request was made
+    assert not (await client.get(f"/items/{item['id']}")).json()["attachments"]
+
+
+# ---------- odd reference URLs ----------
+
+
+@pytest.mark.parametrize(
+    "url", [["https://lab.example/x.pdf"], 42, "http://[::1", "http://a:x/", None]
+)
+async def test_odd_reference_urls_are_ignored_not_errors(net, url):
+    assert not oa.has_identifier({"URL": url})
+    assert await oa.find_candidates({"URL": url}) == []
+
+
+async def test_fetch_with_a_malformed_url_is_a_404_not_a_500(client, library, net):
+    item = await _add(client, library, URL="http://[::1")
+    r = await client.post(f"/items/{item['id']}/fetch-pdf")
+    assert r.status_code == 404
+
+
+async def test_library_fetch_survives_malformed_urls(client, library, net):
+    await _add(client, library, URL="http://[::1", title="Broken URL")
+    await _add(client, library, URL=["not", "a", "string"], title="List URL")
+    r = await client.post(f"/libraries/{library}/fetch-pdfs")
+    assert r.status_code == 200
+    assert r.json()["checked"] == 2 and r.json()["no_identifier"] == 2
+
+
+async def test_a_redirect_to_a_malformed_url_is_a_miss(net):
+    net["https://pub.example/a"] = (302, b"", {"location": "http://[::1"})
+    assert await oa.download_pdf("https://pub.example/a") is None
+
+
+async def test_old_style_arxiv_url_is_still_tried(net):
+    """No arXiv candidate comes from hep-th/9901001, so the URL isn't "covered"."""
+    csl = {"URL": "https://arxiv.org/pdf/hep-th/9901001"}
+    assert oa.has_identifier(csl)
+    assert await oa.find_candidates(csl) == [("url", "https://arxiv.org/pdf/hep-th/9901001")]
+
+
+async def test_a_doi_org_url_without_a_doi_field_is_looked_up_by_its_doi(net):
+    net.update(_unpaywall("10.1/x", "https://pub.example/x.pdf"))
+    csl = {"URL": "https://doi.org/10.1/X"}
+    assert oa.has_identifier(csl)
+    assert await oa.find_candidates(csl) == [("unpaywall", "https://pub.example/x.pdf")]
+
+
+async def test_reference_url_is_deduped_against_candidates_by_normalized_form(net):
+    net.update(_unpaywall("10.1/x", "https://pub.example/x.pdf"))
+    csl = {"DOI": "10.1/x", "URL": "HTTPS://Pub.Example:443/x.pdf#page=2"}
+    assert [s for s, _ in await oa.find_candidates(csl)] == ["unpaywall"]
+
+
+def test_ipv4_is_preferred_when_a_host_has_both(monkeypatch):
+    """The API's docker network is IPv4-only: connecting to a host's IPv6 address
+    (getaddrinfo's order isn't guaranteed) would fail every such download."""
+    monkeypatch.setattr(oa, "public_addresses", lambda host: ["2606:4700::1", "104.16.1.1"])
+    assert oa._public_address("pub.example") == "104.16.1.1"
+    monkeypatch.setattr(oa, "public_addresses", lambda host: ["2606:4700::1"])
+    assert oa._public_address("v6only.example") == "2606:4700::1"
