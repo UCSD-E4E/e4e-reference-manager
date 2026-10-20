@@ -57,7 +57,10 @@ async def fetch_csl(query: str) -> list[dict]:
                 f"{base}{endpoint}", content=q, headers={"Content-Type": "text/plain"}
             )
         except httpx.HTTPError as exc:
-            raise IngestError(f"Could not reach translation-server: {exc}") from exc
+            # Some httpx errors (timeouts) have an empty message: name the error type too.
+            raise IngestError(
+                f"Could not reach translation-server: {type(exc).__name__} {exc}".strip()
+            ) from exc
         if r.status_code == 300:
             raise IngestError("Multiple results — provide a more specific identifier or URL")
         if r.status_code != 200:

@@ -129,9 +129,11 @@ services:
     networks: [interior]
 
   # ── ingestion: Zotero translation-server (URL/DOI → metadata) ────────────────────────
-  # 2.0.4 is the newest tag published for amd64.
+  # Built by release.yml from zotero/translation-server at deploy/translation-server.ref:
+  # Zotero publishes amd64 images only up to 2.0.4, whose runtime can't run current
+  # translators. Each release rebuilds it, picking up the latest translators.
   translation-server:
-    image: zotero/translation-server:2.0.4
+    image: ghcr.io/ucsd-e4e/e4e-reference-manager-translation-server:v1.11.0
     restart: unless-stopped
     expose: ["1969"]
     networks: [interior]

@@ -2,6 +2,8 @@
 
 External services (translation-server, GROBID) and object storage are monkeypatched.
 """
+import pytest
+
 
 CSL_PAPER = {
     "type": "article-journal",
@@ -98,3 +100,27 @@ async def test_ingest_dedups_within_one_batch(client, library, monkeypatch):
     monkeypatch.setattr("app.routers.ingest.fetch_csl", fake_fetch)
     r = (await client.post(f"/libraries/{library}/ingest", json={"query": "x"})).json()
     assert [x["status"] for x in r["results"]] == ["created", "duplicate"]
+
+
+async def test_unreachable_translation_server_names_the_error(monkeypatch):
+    """Timeouts stringify to "": the message must still say what went wrong."""
+    import httpx
+
+    from app import ingest
+
+    class Timeout:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **k):
+            raise httpx.ReadTimeout("")
+
+    monkeypatch.setattr(ingest.httpx, "AsyncClient", Timeout)
+    with pytest.raises(ingest.IngestError, match="ReadTimeout"):
+        await ingest.fetch_csl("10.1/x")
