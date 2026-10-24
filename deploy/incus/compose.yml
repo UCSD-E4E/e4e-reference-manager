@@ -185,7 +185,7 @@ services:
   # ── MEMORY BUDGET (12 GiB slot, no swap) ─────────────────────────────────────────────
   # GROBID and Ollama are the only big, spiky consumers; without limits either can push
   # the VM into the kernel OOM killer, which may pick postgres. Capped so that, even with
-  # both at their cap (7.5 GiB), ~4.5 GiB remain for postgres (shared_buffers 128 MB),
+  # both at their cap (9 GiB), ~2.6 GiB remain for postgres (shared_buffers 128 MB),
   # api, web, traefik, translation-server and the OS. Hitting a cap OOM-kills inside
   # that container only (restart: unless-stopped brings it back) — an ingest/summary
   # fails, the library stays up. Estimates, not measurements: check `docker stats` on
@@ -205,8 +205,10 @@ services:
       # (NPE in CgroupInfo.getMountPoint, JDK-8287073) unless container detection is
       # off. With it off the JVM can't see mem_limit, so the heap is fixed explicitly.
       JAVA_OPTS: -XX:-UseContainerSupport -Xmx2g
-    # 2 GB heap + JVM/native overhead: measured ~2.9 GB while processing two papers.
-    mem_limit: 3500m
+    # 2 GB heap + JVM/native overhead (the CRF models are native, outside the heap).
+    # At 3500m the kernel OOM-killed it at ~3.2 GB RSS during a run of reference
+    # extractions (2026-10-24, building the citation graph); 5g leaves headroom.
+    mem_limit: 5g
     expose: ["8070"]
     networks: [interior]
     logging: *logging
