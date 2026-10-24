@@ -104,6 +104,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** GET an absolute API URL (e.g. an export.bib link) as text, with the session cookie.
+ * Never redirects to login: callers are user actions that show the error instead. */
+export async function fetchText(url: string): Promise<string> {
+  const res = await fetch(url, { credentials: "include" });
+  if (res.status === 401) throw new Error("your session expired — sign in again");
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+  return res.text();
+}
+
 export const api = {
   me: () => req<User>("/auth/me"),
 
