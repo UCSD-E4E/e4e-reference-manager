@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import ExportBibButton from "../components/ExportBibButton";
 import PasteBibtex from "../components/PasteBibtex";
 import { CSL_TYPES } from "../csl";
 import ValidationBadge from "../components/ValidationBadge";
@@ -419,11 +420,7 @@ export default function LibraryView() {
               </button>
             </>
           )}
-          <a href={api.exportLibraryUrl(libId)}>
-            <button className="secondary" type="button">
-              Export .bib
-            </button>
-          </a>
+          <ExportBibButton url={api.exportLibraryUrl(libId)} />
           {canEdit && (
             <button className="secondary" type="button" onClick={doReindex}>
               Reindex search
@@ -586,11 +583,7 @@ export default function LibraryView() {
           <div className="item-row" key={c.id}>
             <span className="grow">{c.name}</span>
             <div className="row">
-              <a href={api.exportCollectionUrl(c.id)}>
-                <button className="secondary" type="button">
-                  Export .bib
-                </button>
-              </a>
+              <ExportBibButton url={api.exportCollectionUrl(c.id)} />
               {canEdit && (
                 <button
                   className="secondary"
@@ -636,9 +629,7 @@ export default function LibraryView() {
               <span className="muted">{g.count} item{g.count === 1 ? "" : "s"}</span>
             </span>
             <div className="row">
-              <a href={api.exportAutoGroupUrl(g.id)}>
-                <button className="secondary" type="button">Export .bib</button>
-              </a>
+              <ExportBibButton url={api.exportAutoGroupUrl(g.id)} />
               {canEdit && (
                 <button
                   className="secondary"

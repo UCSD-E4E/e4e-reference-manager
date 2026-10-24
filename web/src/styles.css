@@ -95,3 +95,37 @@ button:disabled { opacity: 0.5; cursor: default; }
 .editor label { display: block; margin-bottom: 0.6rem; font-size: 0.9rem; }
 .editor label > input, .editor label > select, .editor label > textarea { margin-top: 0.2rem; }
 .editor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0 0.75rem; }
+
+/* Split button (ExportBibButton): main action + a ▾ menu of alternatives. */
+.split-button { position: relative; display: inline-flex; align-items: center; flex-wrap: wrap; }
+.split-main button { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split-toggle { border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
+.split-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 13rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+.split-menu a, .split-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+  padding: 0.55rem 0.8rem;
+  background: none;
+  color: var(--ink);
+  border: none;
+  border-radius: 0;
+  text-decoration: none;
+  cursor: pointer;
+}
+.split-menu a:hover, .split-menu button:hover { background: var(--bg); }
+.split-error { flex-basis: 100%; margin-top: 0.4rem; font-size: 0.85rem; }
