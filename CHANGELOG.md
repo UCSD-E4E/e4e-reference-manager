@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.16.1...v1.17.0) (2026-10-24)
+
+
+### Features
+
+* citation graph of a project's papers ([ce7b4e8](https://github.com/UCSD-E4E/e4e-reference-manager/commit/ce7b4e829b36c6eb3309a27f01c47e4939542755))
+* citation graph of a project's papers ([ea0fa47](https://github.com/UCSD-E4E/e4e-reference-manager/commit/ea0fa47ba5b06ab0a501a8f06d8ac1d00ec6dee6))
+
 ## [1.16.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.16.0...v1.16.1) (2026-10-24)
 
 
