@@ -93,8 +93,9 @@ service. `cp .env.example .env` first if you haven't.
   straight into a project.
 
 > Phase 2 adds two services to `docker-compose.yml`: `translation-server` (light) and
-> `grobid` (heavy, ~4 GB RAM). Bring them up with `docker compose up -d` (GROBID takes a
-> minute to load models). translation-server needs outbound internet to fetch metadata.
+> `grobid` (the CPU-only CRF image, ~3 GB RAM). Bring them up with `docker compose up -d`
+> (GROBID takes a minute to load its models; the first PDF is slower). translation-server
+> needs outbound internet to fetch metadata.
 
 ## What works in Phase 3 (search & local ML)
 
