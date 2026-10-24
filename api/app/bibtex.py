@@ -13,6 +13,8 @@ from bibtexparser.bibdatabase import BibDatabase
 from bibtexparser.bparser import BibTexParser
 from bibtexparser.bwriter import BibTexWriter
 
+from .validation import extract_arxiv_id
+
 # BibTeX entry type -> CSL type (common cases; default "document")
 _BIBTEX_TO_CSL_TYPE = {
     "article": "article-journal",
@@ -103,6 +105,20 @@ def _strip_braces(value: str) -> str:
     return _UNESCAPED_BRACE.sub("", value).strip()
 
 
+# Plain-text fields carried both ways (import: BibTeX → CSL; export: CSL → BibTeX).
+# `location` is biblatex's name for `address`; `howpublished` is how  says what
+# kind of thing it is ("Preprint"), which CSL calls `genre`.
+_BIB_TO_CSL_TEXT = (
+    ("address", "publisher-place"),
+    ("location", "publisher-place"),
+    ("isbn", "ISBN"),
+    ("issn", "ISSN"),
+    ("note", "note"),
+    ("edition", "edition"),
+    ("howpublished", "genre"),
+)
+
+
 def _entry_to_csl(entry: dict) -> tuple[str, dict]:
     bib_type = entry.get("ENTRYTYPE", "misc").lower()
     csl_type = _BIBTEX_TO_CSL_TYPE.get(bib_type, "document")
@@ -134,6 +150,17 @@ def _entry_to_csl(entry: dict) -> tuple[str, dict]:
         csl["abstract"] = abstract
     if (year := _valid_year(entry.get("year"))) is not None:
         csl["issued"] = {"date-parts": [[year]]}
+    for bib_key, csl_key in _BIB_TO_CSL_TEXT:
+        if (value := entry.get(bib_key)) and csl_key not in csl:
+            csl[csl_key] = _strip_braces(value)
+    # arXiv eprints (`eprint` + `archiveprefix`, or biblatex's `eprinttype`). A @misc
+    # one is a preprint: CSL type "article".
+    prefix = (entry.get("archiveprefix") or entry.get("eprinttype") or "").strip().lower()
+    if (eprint := (entry.get("eprint") or "").strip()) and prefix == "arxiv":
+        csl["number"] = f"arXiv:{eprint}"
+        csl.setdefault("URL", f"https://arxiv.org/abs/{eprint}")
+        if bib_type == "misc":
+            csl["type"] = csl_type = "article"
     return csl_type, csl
 
 
@@ -225,8 +252,38 @@ def _csl_names_to_bibtex(names: list) -> str:
     return " and ".join(p for p in parts if p)
 
 
+# Google-Scholar style preprint "venue": "arXiv preprint arXiv:2305.20050".
+_ARXIV_CONTAINER = re.compile(r"^\s*arxiv\b", re.IGNORECASE)
+# Exported as text (escaped) / verbatim (identifiers and links, which biblatex reads raw).
+_CSL_TO_BIB_TEXT = (
+    ("publisher", "publisher"),
+    ("publisher-place", "address"),
+    ("volume", "volume"),
+    ("issue", "number"),
+    ("page", "pages"),
+    ("edition", "edition"),
+    ("note", "note"),
+    ("abstract", "abstract"),
+)
+_CSL_TO_BIB_VERBATIM = (("DOI", "doi"), ("URL", "url"), ("ISBN", "isbn"), ("ISSN", "issn"))
+# A preprint's "volume"/"issue"/"pages" are not real: BibTeX styles warn about them.
+_NOT_FOR_PREPRINTS = {"volume", "number", "pages"}
+# arXiv's category as Zotero notes it: "arXiv:2305.15334 [cs.CL]".
+_ARXIV_CLASS = re.compile(r"\[([a-z-]+(?:\.[A-Za-z-]+)?)\]")
+
+
+def _is_preprint(csl: dict) -> bool:
+    """CSL "article" is the preprint type; a venue like "arXiv preprint arXiv:..." too."""
+    container = csl.get("container-title")
+    return csl.get("type") == "article" or (
+        isinstance(container, str) and bool(_ARXIV_CONTAINER.match(container))
+    )
+
+
 def csl_to_bibtex_entry(citation_key: str, csl: dict) -> dict:
-    bib_type = _CSL_TO_BIBTEX_TYPE.get(csl.get("type", "document"), "misc")
+    preprint = _is_preprint(csl)
+    # Preprints are @misc (+ eprint for arXiv), not an @article in a made-up journal.
+    bib_type = "misc" if preprint else _CSL_TO_BIBTEX_TYPE.get(csl.get("type", "document"), "misc")
     key = _bib_key(str(citation_key or csl.get("id") or "")) or "ref"
     entry: dict = {"ENTRYTYPE": bib_type, "ID": key}
     if csl.get("title"):
@@ -234,21 +291,22 @@ def csl_to_bibtex_entry(citation_key: str, csl: dict) -> dict:
     for role in ("author", "editor"):
         if isinstance(csl.get(role), list) and (names := _csl_names_to_bibtex(csl[role])):
             entry[role] = names
-    if csl.get("container-title"):
+    if csl.get("container-title") and not preprint:
         field = "journal" if bib_type == "article" else "booktitle"
         entry[field] = _bib_text(csl["container-title"])
-    for csl_key, bib_key in (
-        ("publisher", "publisher"),
-        ("volume", "volume"),
-        ("issue", "number"),
-        ("page", "pages"),
-        ("abstract", "abstract"),
-    ):
-        if csl.get(csl_key):
+    for csl_key, bib_key in _CSL_TO_BIB_TEXT:
+        if csl.get(csl_key) and not (preprint and bib_key in _NOT_FOR_PREPRINTS):
             entry[bib_key] = _bib_text(csl[csl_key])
-    for csl_key, bib_key in (("DOI", "doi"), ("URL", "url")):
+    if bib_type == "misc" and csl.get("genre"):
+        entry["howpublished"] = _bib_text(csl["genre"])  # e.g. "Preprint"
+    for csl_key, bib_key in _CSL_TO_BIB_VERBATIM:
         if csl.get(csl_key):
             entry[bib_key] = _bib_verbatim(csl[csl_key])
+    if preprint and (arxiv_id := extract_arxiv_id(csl)):
+        entry["eprint"] = arxiv_id
+        entry["archiveprefix"] = "arXiv"
+        if isinstance(csl.get("note"), str) and (m := _ARXIV_CLASS.search(csl["note"])):
+            entry["primaryclass"] = m.group(1)
     if (year := year_from_csl(csl)) is not None:
         entry["year"] = str(year)
     return entry
