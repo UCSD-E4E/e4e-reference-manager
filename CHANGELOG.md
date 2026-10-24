@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.16.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.4...v1.16.0) (2026-10-24)
+
+
+### Features
+
+* **web:** copy BibTeX to the clipboard from the Export .bib button ([3b2eebb](https://github.com/UCSD-E4E/e4e-reference-manager/commit/3b2eebba54def4f8e0f5d254ac57f2d94de3b2ba))
+* **web:** copy BibTeX to the clipboard from the Export .bib button ([36967b8](https://github.com/UCSD-E4E/e4e-reference-manager/commit/36967b8dd3cdf142d473ce2bf0030bbd5e971d83))
+
 ## [1.15.4](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.3...v1.15.4) (2026-10-20)
 
 
