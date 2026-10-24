@@ -93,7 +93,7 @@ services:
 
   # ── API → bib.krg.ucsd.edu/api (FastAPI; migrations, then uvicorn) ───────────────────
   api:
-    image: ghcr.io/ucsd-e4e/e4e-reference-manager-api:v1.16.1
+    image: ghcr.io/ucsd-e4e/e4e-reference-manager-api:v1.17.0
     restart: unless-stopped
     # Migrations run on every start, before the server: a failing migration keeps the
     # API down (and the converge's verify red) rather than serving a stale schema.
@@ -157,7 +157,7 @@ services:
   # Built with VITE_API_URL=/api (the API is same-origin under /api). A static server
   # (nginx) — never the Vite dev server.
   web:
-    image: ghcr.io/ucsd-e4e/e4e-reference-manager-web:v1.16.1
+    image: ghcr.io/ucsd-e4e/e4e-reference-manager-web:v1.17.0
     restart: unless-stopped
     expose: ["8080"]
     # nginx-unprivileged:*-alpine ships busybox wget. 127.0.0.1, not localhost: nginx
@@ -176,7 +176,7 @@ services:
   # Zotero publishes amd64 images only up to 2.0.4, whose runtime can't run current
   # translators. Each release rebuilds it, picking up the latest translators.
   translation-server:
-    image: ghcr.io/ucsd-e4e/e4e-reference-manager-translation-server:v1.16.1
+    image: ghcr.io/ucsd-e4e/e4e-reference-manager-translation-server:v1.17.0
     restart: unless-stopped
     expose: ["1969"]
     networks: [interior]
