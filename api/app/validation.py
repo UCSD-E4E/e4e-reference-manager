@@ -96,8 +96,10 @@ def parse_arxiv_atom(xml_text: str) -> dict | None:
 
 
 def extract_arxiv_id(csl: dict) -> str | None:
-    """Pull an arXiv id out of common CSL fields (note/URL/DOI)."""
-    for key in ("note", "URL", "DOI"):
+    """Pull an arXiv id out of common CSL fields: note, URL, DOI (10.48550/arXiv.*),
+    number ("arXiv:2305.20050", as imported eprints are stored) and container-title
+    (Google-Scholar style "arXiv preprint arXiv:2305.20050")."""
+    for key in ("note", "URL", "DOI", "number", "container-title"):
         val = csl.get(key)
         if isinstance(val, str):
             m = _ARXIV_ID_RE.search(val)
