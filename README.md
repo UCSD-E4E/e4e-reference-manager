@@ -215,6 +215,25 @@ but `REFMAN_SESSION_SECRET` is still the built-in dev value.
   `Sec-Fetch-Site`/`Referer`): `REFMAN_POST_LOGIN_REDIRECT`, `REFMAN_APP_BASE_URL` or
   `REFMAN_CORS_ORIGINS`. Bearer-token requests and one-time upload links are exempt.
 
+## Citation graph
+
+Each project has a **Citation graph** page (linked from the project header). Every paper
+is a dot, and an arrow points from a paper to each paper in the project it cites. Dot
+size shows how often the paper is cited within the project, and colour shows its year.
+Hover a paper to see its details and highlight its links; click it to open it. A "most
+cited in this project" table sits below the graph.
+
+**Build citation graph** (edit access) looks up each paper's references and matches
+them to papers in the project. Re-running replaces a paper's old links.
+- **OpenAlex** (`app/openalex.py`) gives the reference lists of papers with a DOI,
+  looked up 50 per request and matched by OpenAlex work id.
+- **Attached PDFs**: GROBID extracts each PDF's reference list, which is cached on the
+  attachment, and entries are matched by DOI or title + year. This is what links papers
+  without a DOI, such as your own drafts.
+- The build runs in batches (`POST /libraries/{id}/citations/build?after=`). If a lookup
+  fails, that paper's existing links are kept. `GET /libraries/{id}/citations` returns
+  the nodes and edges.
+
 ## Trash
 
 Deleting a reference moves it to its project's **Trash** (linked from the project page)

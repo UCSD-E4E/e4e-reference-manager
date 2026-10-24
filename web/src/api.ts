@@ -7,6 +7,8 @@ import type {
   AutoGroup,
   AutoGroupGenerateSource,
   AutoGroupKind,
+  CitationBuild,
+  CitationGraph,
   Collection,
   DedupeResult,
   FetchedPdf,
@@ -144,6 +146,14 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ version, csl_json, ...extra }),
     }),
+  // Citation graph
+  citationGraph: (libId: string) => req<CitationGraph>(`/libraries/${libId}/citations`),
+  buildCitations: (libId: string, after: string | null) =>
+    req<CitationBuild>(
+      `/libraries/${libId}/citations/build${after ? `?after=${after}` : ""}`,
+      { method: "POST" },
+    ),
+
   // Moves the item to its library's trash (restorable for 30 days).
   deleteItem: (id: string) => req<void>(`/items/${id}`, { method: "DELETE" }),
   listTrash: (libId: string) => req<TrashedItem[]>(`/libraries/${libId}/trash`),

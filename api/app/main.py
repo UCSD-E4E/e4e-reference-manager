@@ -22,6 +22,7 @@ from .routers import (
     auth,
     auto_groups,
     bib,
+    citations,
     collab,
     collections,
     health,
@@ -108,4 +109,5 @@ app.include_router(ml.router)
 app.include_router(validate.router)
 app.include_router(trash.router)
 app.include_router(uploads.router)
+app.include_router(citations.router)
 mount_mcp(app)
