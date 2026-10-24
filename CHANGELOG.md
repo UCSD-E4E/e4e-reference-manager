@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.17.0...v1.17.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deploy:** raise GROBID's memory cap to 5g ([e82c143](https://github.com/UCSD-E4E/e4e-reference-manager/commit/e82c1439e2b7b536a6c974578a1bdbfa3da29498))
+* **deploy:** raise GROBID's memory cap to 5g ([5add741](https://github.com/UCSD-E4E/e4e-reference-manager/commit/5add741c464584c25a633fcd09733cd416ac499a))
+
 ## [1.17.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.16.1...v1.17.0) (2026-10-24)
 
 
