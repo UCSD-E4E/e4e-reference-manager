@@ -43,7 +43,10 @@ services:
 
   # PDF -> structured header metadata + references. Heavy (~4GB RAM); CPU is fine.
   grobid:
-    image: grobid/grobid:0.8.1
+    # CRF-only image, as in production (deploy/incus/compose.yml explains the JAVA_OPTS).
+    image: grobid/grobid:0.8.2-crf
+    environment:
+      JAVA_OPTS: -XX:-UseContainerSupport -Xmx2g
     ports:
       - "8070:8070"
     restart: unless-stopped
