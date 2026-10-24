@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.16.1](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.16.0...v1.16.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deploy:** use GROBID's CPU-only CRF image (32.5 GB → 1.7 GB) ([827cbd1](https://github.com/UCSD-E4E/e4e-reference-manager/commit/827cbd1b617fa7a954fe40eef6f7f9dcd73727a2))
+* **deploy:** use GROBID's CPU-only CRF image (32.5 GB → 1.7 GB) ([85478e3](https://github.com/UCSD-E4E/e4e-reference-manager/commit/85478e36ab97977e61eaa933e2182fcabb3281e5))
+* export address, ISBN/ISSN, notes and arXiv eprints in BibTeX ([793e21e](https://github.com/UCSD-E4E/e4e-reference-manager/commit/793e21ebffd3c173c6f16f5f0bfc09c808c40765))
+* export address, ISBN/ISSN, notes and arXiv eprints in BibTeX ([fd2ffa4](https://github.com/UCSD-E4E/e4e-reference-manager/commit/fd2ffa45535b6165c930869cf18dfee34a119bae))
+
 ## [1.16.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.15.4...v1.16.0) (2026-10-24)
 
 
