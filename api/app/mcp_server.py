@@ -34,6 +34,7 @@ from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
 from .auth import authenticate_token
+from .bibtex import authors_text
 from .config import get_settings
 from .db import get_session
 from .trash import TRASH_RETENTION
@@ -141,16 +142,6 @@ async def _json(ctx: Context, method: str, path: str, **kwargs: Any) -> Any:
 # ── Shaping results for a model: compact by default ─────────────────────────────────────
 
 
-def _authors(csl: dict) -> str:
-    names = []
-    for a in csl.get("author") or []:
-        if a.get("literal"):
-            names.append(a["literal"])
-        else:
-            names.append(", ".join(p for p in (a.get("family"), a.get("given")) if p))
-    return "; ".join(n for n in names if n)
-
-
 def _is_pdf(att: dict) -> bool:
     base = (att.get("content_type") or "").split(";")[0].strip().lower()
     return base == "application/pdf" or att.get("filename", "").lower().endswith(".pdf")
@@ -163,7 +154,7 @@ def _summary(item: dict) -> dict:
         "citation_key": item["citation_key"],
         "type": item["type"],
         "title": item["title"],
-        "authors": _authors(csl),
+        "authors": authors_text(csl),
         "year": item["year"],
         "doi": item["doi"],
         "container": csl.get("container-title"),

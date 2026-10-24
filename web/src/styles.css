@@ -129,3 +129,18 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .split-menu a:hover, .split-menu button:hover { background: var(--bg); }
 .split-error { flex-basis: 100%; margin-top: 0.4rem; font-size: 0.85rem; }
+
+/* Citation graph (pages/Citations.tsx) */
+.graph-controls { margin-bottom: 0.5rem; }
+.graph-wrap { position: relative; background: #fcfcfb; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.graph-canvas { display: block; width: 100%; height: min(70vh, 640px); touch-action: none; cursor: grab; user-select: none; }
+.graph-canvas:active { cursor: grabbing; }
+.graph-label { font-size: 11px; paint-order: stroke; stroke: #fcfcfb; stroke-width: 3px; pointer-events: none; }
+.graph-tooltip { position: absolute; max-width: 260px; padding: 0.5rem 0.65rem; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); font-size: 0.85rem; pointer-events: none; z-index: 5; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; padding: 0.5rem 0.75rem; border-top: 1px solid var(--border); font-size: 0.85rem; }
+.graph-legend > div { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.75rem; }
+.legend-item { display: inline-flex; align-items: center; gap: 0.3rem; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.graph-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.graph-table th, .graph-table td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); }
+.graph-table .num { text-align: right; font-variant-numeric: tabular-nums; }

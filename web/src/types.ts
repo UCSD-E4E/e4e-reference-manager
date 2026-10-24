@@ -262,3 +262,35 @@ export interface Annotation {
   created_at: string;
   updated_at: string;
 }
+
+export interface CitationNode {
+  id: string;
+  citation_key: string;
+  title: string;
+  year: number | null;
+  authors: string;
+  has_pdf: boolean;
+  cites: number; // papers in this library it cites
+  cited_by: number; // papers in this library citing it
+}
+
+export interface CitationEdge {
+  source: string; // citing paper
+  target: string; // cited paper
+  sources: string[]; // where the link was found: openalex, pdf
+}
+
+export interface CitationGraph {
+  nodes: CitationNode[];
+  edges: CitationEdge[];
+  checked: number;
+  total: number;
+}
+
+export interface CitationBuild {
+  checked: number;
+  linked: number;
+  links: number;
+  failed: number;
+  next_after: string | null;
+}

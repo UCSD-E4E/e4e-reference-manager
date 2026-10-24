@@ -98,6 +98,40 @@ class LibraryPdfFetch(BaseModel):
     failed: int  # storage/extraction error; safe to retry
     next_after: uuid.UUID | None  # pass back as `after` for the next batch; None = done
 
+class CitationBuild(BaseModel):
+    """One batch of a library-wide citation-graph build."""
+
+    checked: int  # papers processed in this batch
+    linked: int  # of those, papers that cite at least one other paper in the library
+    links: int  # citation links found in this batch
+    failed: int  # papers whose lookup (OpenAlex or GROBID) failed; their old links kept
+    next_after: uuid.UUID | None  # pass back as `after`; None = done
+
+
+class CitationNode(BaseModel):
+    id: uuid.UUID
+    citation_key: str
+    title: str
+    year: int | None
+    authors: str
+    has_pdf: bool
+    cites: int  # papers in this library it cites
+    cited_by: int  # papers in this library citing it
+
+
+class CitationEdge(BaseModel):
+    source: uuid.UUID  # the citing paper
+    target: uuid.UUID  # the cited paper
+    sources: list[str]  # where the link was found: openalex, pdf
+
+
+class CitationGraph(BaseModel):
+    nodes: list[CitationNode]
+    edges: list[CitationEdge]
+    checked: int  # papers whose citations have been computed
+    total: int  # papers in the library
+
+
 class ItemCreate(BaseModel):
     citation_key: str = ""
     type: str = "document"

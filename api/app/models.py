@@ -256,6 +256,12 @@ class Item(Base):
     deleted_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
     )
+    # Citation graph (app.routers.citations): the paper's OpenAlex work id, and when its
+    # outgoing citations were last computed.
+    openalex_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    citations_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     attachments: Mapped[list["Attachment"]] = relationship(
         back_populates="item", cascade="all, delete-orphan", lazy="selectin"
@@ -290,9 +296,27 @@ class Attachment(Base):
     storage_key: Mapped[str] = mapped_column(String(512))
     # Extracted plain text (PDFs), cached for full-text search (Phase 3b).
     text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The PDF's reference list as GROBID extracted it (CSL-like dicts), cached for the
+    # citation graph; None = not extracted yet.
+    references: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     item: Mapped["Item"] = relationship(back_populates="attachments")
+
+
+class Citation(Base):
+    """`citing` cites `cited`, both papers of the same library, as found by `source`
+    ("openalex": its reference list by DOI; "pdf": GROBID on its attached PDF)."""
+
+    __tablename__ = "citation"
+
+    citing_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("item.id", ondelete="CASCADE"), primary_key=True
+    )
+    cited_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("item.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    source: Mapped[str] = mapped_column(String(16), primary_key=True)
 
 
 class Tag(Base):

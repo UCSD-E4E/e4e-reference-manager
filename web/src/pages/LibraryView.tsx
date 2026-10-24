@@ -398,6 +398,7 @@ export default function LibraryView() {
         <Link to="/" className="grow">
           ← Projects
         </Link>
+        <Link to={`/libraries/${libId}/citations`}>Citation graph</Link>
         <Link to={`/libraries/${libId}/trash`}>Trash</Link>
       </p>
       <h1>

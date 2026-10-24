@@ -138,9 +138,13 @@ def parse_tei_references(xml_text: str) -> list[dict]:
     return refs
 
 
-async def extract_references(pdf: bytes) -> list[dict]:
-    """GROBID processReferences -> list of CSL-like dicts. Returns [] on any failure
-    (callers treat that as "couldn't extract any citations")."""
+class GrobidUnavailable(Exception):
+    """GROBID couldn't process the PDF (down, timed out, or errored)."""
+
+
+async def extract_references_strict(pdf: bytes) -> list[dict]:
+    """GROBID processReferences -> list of CSL-like dicts; raises GrobidUnavailable on
+    failure, so callers can tell "no references" from "couldn't look"."""
     s = get_settings()
     base = s.grobid_url.rstrip("/")
     try:
@@ -152,6 +156,15 @@ async def extract_references(pdf: bytes) -> list[dict]:
                 data={"consolidateCitations": "0"},
             )
         r.raise_for_status()
-    except httpx.HTTPError:
-        return []
+    except httpx.HTTPError as exc:
+        raise GrobidUnavailable(str(exc)) from exc
     return parse_tei_references(r.text)
+
+
+async def extract_references(pdf: bytes) -> list[dict]:
+    """Like extract_references_strict, but [] on any failure (callers treat that as
+    "couldn't extract any citations")."""
+    try:
+        return await extract_references_strict(pdf)
+    except GrobidUnavailable:
+        return []

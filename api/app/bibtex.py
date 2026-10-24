@@ -238,6 +238,19 @@ def _bib_key(key: str) -> str:
     return re.sub(r"[\s{}(),\"#%'=~\\]", "", key)
 
 
+def authors_text(csl: dict) -> str:
+    """"Family, Given; Family, Given" (organisations by name) for display."""
+    names = []
+    for a in csl.get("author") or []:
+        if not isinstance(a, dict):
+            continue
+        if a.get("literal"):
+            names.append(str(a["literal"]))
+        else:
+            names.append(", ".join(str(p) for p in (a.get("family"), a.get("given")) if p))
+    return "; ".join(n for n in names if n)
+
+
 def _csl_names_to_bibtex(names: list) -> str:
     parts = []
     for n in names:
