@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.18.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.17.0...v1.18.0) (2026-10-29)
+
+
+### Features
+
+* **web:** search text in the PDF viewer ([d78b189](https://github.com/UCSD-E4E/e4e-reference-manager/commit/d78b189f5d6a664c92ffe375c0ebc145fa1e47d5))
+* **web:** search text in the PDF viewer ([dd7fa65](https://github.com/UCSD-E4E/e4e-reference-manager/commit/dd7fa6559e18457dc9f65520ff347c68a09558b3))
+
+
+### Bug Fixes
+
+* **deploy:** raise GROBID's memory cap to 5g ([e82c143](https://github.com/UCSD-E4E/e4e-reference-manager/commit/e82c1439e2b7b536a6c974578a1bdbfa3da29498))
+* **deploy:** raise GROBID's memory cap to 5g ([5add741](https://github.com/UCSD-E4E/e4e-reference-manager/commit/5add741c464584c25a633fcd09733cd416ac499a))
+* **deploy:** verify both compose store-path forms (krg-infra [#621](https://github.com/UCSD-E4E/e4e-reference-manager/issues/621)) ([7435b24](https://github.com/UCSD-E4E/e4e-reference-manager/commit/7435b249c30c9bff5f9cad5cfd108f579df722d0))
+* **deploy:** verify both compose store-path forms (krg-infra [#621](https://github.com/UCSD-E4E/e4e-reference-manager/issues/621)) ([6477f67](https://github.com/UCSD-E4E/e4e-reference-manager/commit/6477f67cab68237168d1cf3422278ff1e50ed89d))
+
 ## [1.17.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.16.1...v1.17.0) (2026-10-24)
 
 
