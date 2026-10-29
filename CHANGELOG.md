@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.19.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.18.0...v1.19.0) (2026-10-29)
+
+
+### Features
+
+* **mcp:** accept the API token in an X-API-Key header ([80d8576](https://github.com/UCSD-E4E/e4e-reference-manager/commit/80d857661e9b79a3c295f3e04e73e0ed895c5c33))
+* **mcp:** accept the API token in an X-API-Key header ([24c198a](https://github.com/UCSD-E4E/e4e-reference-manager/commit/24c198a470e16508a08f41d4cc844deb7636cc66))
+
 ## [1.18.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.17.0...v1.18.0) (2026-10-29)
 
 
