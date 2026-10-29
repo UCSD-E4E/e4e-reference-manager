@@ -2,10 +2,11 @@
 
 Served at /mcp on the API (public URL: https://bib.krg.ucsd.edu/api/mcp) over streamable
 HTTP, stateless, JSON responses. Clients authenticate with a personal API token
-(`Authorization: Bearer refman_...`, see auth.py).
+(`Authorization: Bearer refman_...`, see auth.py), or `X-API-Key: refman_...` for
+clients that can't send an Authorization header (claude.ai custom connectors).
 
 Each tool is a thin wrapper over the REST API, called in-process with the caller's own
-Authorization header, so tools get exactly the REST endpoints' permissions, validation
+token as a Bearer header, so tools get exactly the REST endpoints' permissions, validation
 and audit trail, and no logic is duplicated here. Agents can't destroy data: metadata
 edits (update_reference) are recorded in the reference's history and can be undone,
 delete_reference only moves a reference to its library's trash for 30 days, and there
@@ -16,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import aclosing, asynccontextmanager
 from datetime import datetime, timezone
 from typing import Annotated, Any, Literal
@@ -112,7 +113,8 @@ async def _api(authorization: str) -> AsyncIterator[httpx.AsyncClient]:
 
 def _caller_api(ctx: Context):
     """A client for the REST API that acts as the MCP caller (their token)."""
-    return _api((ctx.headers or {}).get("authorization", ""))
+    token = _caller_token(ctx.headers or {})
+    return _api(f"Bearer {token}" if token else "")
 
 
 def _error_message(r: httpx.Response) -> str:
@@ -502,6 +504,14 @@ def _bearer_token(authorization: str) -> str | None:
     return (token.strip() or None) if scheme.lower() == "bearer" else None
 
 
+def _caller_token(headers: Mapping[str, str]) -> str | None:
+    """The caller's API token. An Authorization header always decides (a bad one is not
+    rescued by X-API-Key); without one, X-API-Key carries the bare token."""
+    if "authorization" in headers:
+        return _bearer_token(headers["authorization"])
+    return headers.get("x-api-key", "").strip() or None
+
+
 async def _token_is_valid(token: str) -> bool:
     # Open the DB session the way the app does, honouring dependency overrides (tests).
     get_db = _api_app.dependency_overrides.get(get_session, get_session)
@@ -544,9 +554,11 @@ class McpEndpoint:
         headers = Headers(scope=scope)  # latin-1, like the HTTP spec; never raises
         # Demand a Bearer token outright: with REFMAN_DEV_AUTH the API would otherwise
         # accept a header-less request as the dev user.
-        token = _bearer_token(headers.get("authorization", ""))
+        token = _caller_token(headers)
         if token is None:
-            response = _unauthorized("An API token is required (Authorization: Bearer ...)")
+            response = _unauthorized(
+                "An API token is required (Authorization: Bearer ... or X-API-Key: ...)"
+            )
         elif not await _token_is_valid(token):
             response = _unauthorized("Invalid or expired API token")
         elif self._manager is None:

@@ -129,6 +129,10 @@ export default function Tokens() {
                 {copied === "command" ? "Copied" : "Copy"}
               </button>
             </div>
+            <p className="muted">
+              For a claude.ai custom connector, use the URL above and add a custom header
+              named <code>X-API-Key</code> whose value is the token.
+            </p>
           </>
         ) : (
           <p className="muted">Create a token above to get the command that connects Claude Code.</p>

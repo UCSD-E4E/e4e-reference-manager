@@ -286,6 +286,10 @@ claude mcp add --transport http refman https://bib.krg.ucsd.edu/api/mcp \
 
 The **API tokens** page shows this command with your new token filled in.
 
+Clients that can't send an `Authorization` header, such as claude.ai custom connectors,
+can send the bare token as `X-API-Key: refman_...` instead. If both headers are present,
+`Authorization` decides. `X-API-Key` only works on the MCP endpoint, not the REST API.
+
 | Tool | What it does |
 |---|---|
 | `list_libraries` | Libraries you can access, with your access level |
@@ -312,7 +316,8 @@ The **API tokens** page shows this command with your new token filled in.
   trash stays a human action in the web app. (`validate_reference` replaces the stored
   verdict without a history entry; re-validating recomputes it.)
 - The server is stateless streamable HTTP with JSON responses (`app/mcp_server.py`).
-  Requests without a valid Bearer token get a 401, even with `REFMAN_DEV_AUTH`.
+  Requests without a valid token (Bearer or `X-API-Key`) get a 401, even with
+  `REFMAN_DEV_AUTH`.
 - Local development: create a token in the local web app, then point the client at
   `http://localhost:8000/mcp`.
 
