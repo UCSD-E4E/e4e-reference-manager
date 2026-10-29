@@ -65,10 +65,11 @@ async def _token(db, user) -> str:
 
 
 @asynccontextmanager
-async def _session(token: str):
+async def _session(token: str, header: str = "Authorization"):
     transport = httpx2.ASGITransport(app=app)
+    value = f"Bearer {token}" if header == "Authorization" else token
     async with mcp_endpoint.running(), httpx2.AsyncClient(
-        transport=transport, base_url="http://test", headers={"Authorization": f"Bearer {token}"}
+        transport=transport, base_url="http://test", headers={header: value}
     ) as http:
         async with streamable_http_client("http://test/mcp", http_client=http) as streams:
             async with ClientSession(streams[0], streams[1]) as s:
@@ -81,15 +82,16 @@ class Agent:
     session; that keeps anyio task groups inside one task (pytest-asyncio tears down
     async fixtures in another, which anyio forbids)."""
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, header: str = "Authorization"):
         self.token = token
+        self.header = header
 
     async def list_tools(self):
-        async with _session(self.token) as s:
+        async with _session(self.token, self.header) as s:
             return (await s.list_tools()).tools
 
     async def call_tool(self, tool: str, args: dict):
-        async with _session(self.token) as s:
+        async with _session(self.token, self.header) as s:
             return await s.call_tool(tool, args)
 
 
@@ -158,6 +160,41 @@ async def test_expired_token_is_rejected(mcp_app, db, alice):
         r = await http.post(
             "/mcp",
             headers={"Authorization": f"Bearer {raw}"},
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        )
+    assert r.status_code == 401
+
+
+async def test_x_api_key_header_authenticates(mcp_app, db, alice):
+    """claude.ai connectors can't send an Authorization header, only custom ones."""
+    lib_id = await _new_library(db, alice)
+    agent = Agent(await _token(db, alice), header="X-API-Key")
+    assert {t.name for t in await agent.list_tools()} == EXPECTED_TOOLS
+    libs = await _call(agent, "list_libraries")
+    assert [lib["id"] for lib in libs["libraries"]] == [lib_id]
+
+
+@pytest.mark.parametrize("key", ["refman_nope", "", "Bearer refman_nope"])
+async def test_invalid_x_api_key_is_rejected(mcp_app, key):
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as http:
+        r = await http.post(
+            "/mcp",
+            headers={"X-API-Key": key},
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        )
+    assert r.status_code == 401
+
+
+async def test_authorization_header_wins_over_x_api_key(mcp_app, db, alice):
+    token = await _token(db, alice)
+    transport = httpx2.ASGITransport(app=app)
+    async with mcp_endpoint.running(), httpx2.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as http:
+        r = await http.post(
+            "/mcp",
+            headers={"Authorization": "Bearer refman_nope", "X-API-Key": token},
             json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
         )
     assert r.status_code == 401
