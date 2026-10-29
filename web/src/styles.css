@@ -144,3 +144,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .graph-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .graph-table th, .graph-table td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); }
 .graph-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.pdf-toolbar { flex-wrap: wrap; }
+.pdf-search { display: inline-flex; gap: 0.35rem; align-items: center; margin-left: auto; }
+.pdf-search input { width: 12rem; }
+.pdf-search button { padding: 0.2rem 0.5rem; }
+.pdf-frame mark.pdf-hit { background: rgba(255, 200, 0, 0.45); color: transparent; border-radius: 2px; }
+.pdf-frame mark.pdf-hit.current { background: rgba(255, 120, 0, 0.7); }
