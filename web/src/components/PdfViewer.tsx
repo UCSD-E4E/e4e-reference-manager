@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { api } from "../api";
+import { pageLabel, parsePageInput } from "../pageInput";
 import { buildPageText, findMatches, highlightItem, type Range } from "../pdfSearch";
 import type { Annotation } from "../types";
 
@@ -32,6 +33,19 @@ export default function PdfViewer({
   const [hits, setHits] = useState<Hit[]>([]);
   const [current, setCurrent] = useState(0);
   const [searching, setSearching] = useState(false);
+  // The PDF's own page labels (a book's i, ii, ..., 1, 2, ...), null when it has none.
+  const [labels, setLabels] = useState<string[] | null>(null);
+  const label = pageLabel(page, labels);
+  // What's typed in the page box; follows the page whenever it changes some other way.
+  const [pageDraft, setPageDraft] = useState("1");
+  useEffect(() => setPageDraft(label), [label]);
+
+  const commitPageDraft = () => {
+    const n = parsePageInput(pageDraft, numPages, labels);
+    if (n !== null) setPage(n);
+    // Show the label of the page it landed on (or put back the current one).
+    setPageDraft(pageLabel(n ?? page, labels));
+  };
 
   useEffect(() => {
     const update = () => {
@@ -166,8 +180,23 @@ export default function PdfViewer({
         >
           ‹ Prev
         </button>
-        <span className="muted">
-          Page {page} {numPages ? `/ ${numPages}` : ""}
+        <span className="muted pdf-page">
+          Page{" "}
+          <input
+            type="text"
+            inputMode="numeric"
+            value={pageDraft}
+            onChange={(e) => setPageDraft(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={commitPageDraft}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitPageDraft();
+              else if (e.key === "Escape") setPageDraft(label);
+            }}
+            disabled={!numPages}
+            aria-label="Page number"
+          />{" "}
+          {!numPages ? "" : label === String(page) ? `/ ${numPages}` : `(${page} / ${numPages})`}
         </span>
         <button
           className="secondary"
@@ -230,6 +259,8 @@ export default function PdfViewer({
           file={url}
           onLoadSuccess={(doc) => {
             pageTexts.current.clear();
+            setLabels(null);
+            doc.getPageLabels().then(setLabels, () => setLabels(null));
             setNumPages(doc.numPages);
             setPdf(doc);
           }}
@@ -283,7 +314,7 @@ export default function PdfViewer({
                   style={{ padding: "0.1rem 0.4rem", marginRight: "0.4rem" }}
                   onClick={() => setPage(a.page)}
                 >
-                  p.{a.page}
+                  p.{pageLabel(a.page, labels)}
                 </button>
                 {a.quote && <em>“{a.quote.slice(0, 90)}”</em>}
                 {a.comment && <span> — {a.comment}</span>}
