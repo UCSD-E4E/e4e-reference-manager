@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { api } from "../api";
+import { parsePageInput } from "../pageInput";
 import { buildPageText, findMatches, highlightItem, type Range } from "../pdfSearch";
 import type { Annotation } from "../types";
 
@@ -32,6 +33,18 @@ export default function PdfViewer({
   const [hits, setHits] = useState<Hit[]>([]);
   const [current, setCurrent] = useState(0);
   const [searching, setSearching] = useState(false);
+  // What's typed in the page box; follows the page whenever it changes some other way.
+  const [pageDraft, setPageDraft] = useState("1");
+  useEffect(() => setPageDraft(String(page)), [page]);
+
+  const commitPageDraft = () => {
+    const n = parsePageInput(pageDraft, numPages);
+    if (n === null) setPageDraft(String(page));
+    else {
+      setPage(n);
+      setPageDraft(String(n)); // a clamped number shows the page it landed on
+    }
+  };
 
   useEffect(() => {
     const update = () => {
@@ -166,8 +179,23 @@ export default function PdfViewer({
         >
           ‹ Prev
         </button>
-        <span className="muted">
-          Page {page} {numPages ? `/ ${numPages}` : ""}
+        <span className="muted pdf-page">
+          Page{" "}
+          <input
+            type="text"
+            inputMode="numeric"
+            value={pageDraft}
+            onChange={(e) => setPageDraft(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={commitPageDraft}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitPageDraft();
+              else if (e.key === "Escape") setPageDraft(String(page));
+            }}
+            disabled={!numPages}
+            aria-label="Page number"
+          />{" "}
+          {numPages ? `/ ${numPages}` : ""}
         </span>
         <button
           className="secondary"
