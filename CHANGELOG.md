@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.20.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.19.0...v1.20.0) (2026-10-30)
+
+
+### Features
+
+* **web:** type a page number in the PDF viewer ([d5c0318](https://github.com/UCSD-E4E/e4e-reference-manager/commit/d5c0318cee2f0b3a72379665c1a50d1fce19037e))
+* **web:** type a page number or book page label in the PDF viewer ([8b4537d](https://github.com/UCSD-E4E/e4e-reference-manager/commit/8b4537d6105587ec2f8b7cdd3b9de3a9bf0281f7))
+* **web:** use the PDF's own page labels in the viewer ([db5d3af](https://github.com/UCSD-E4E/e4e-reference-manager/commit/db5d3af3c2695fbfe81813c3dd48379232dd92b7))
+
 ## [1.19.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.18.0...v1.19.0) (2026-10-29)
 
 
