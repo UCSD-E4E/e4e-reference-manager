@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.21.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.20.0...v1.21.0) (2026-10-31)
+
+
+### Features
+
+* master's and PhD theses ([136c5ec](https://github.com/UCSD-E4E/e4e-reference-manager/commit/136c5ecc3d7d7ec086d5d0c2ec96251a4c50dcfb))
+* master's and PhD theses ([45eb201](https://github.com/UCSD-E4E/e4e-reference-manager/commit/45eb20117bbcdce04aaf20afdf9e82ec1d74579e))
+
 ## [1.20.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.19.0...v1.20.0) (2026-10-30)
 
 
