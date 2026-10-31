@@ -46,6 +46,10 @@ _CSL_TO_BIBTEX_TYPE = {
     "webpage": "online",
     "document": "misc",
 }
+# CSL has one "thesis" type and says which kind in `genre`; BibTeX has an entry type per
+# kind. Each kind's default genre, and how to recognise a master's genre ("MS thesis").
+_THESIS_GENRE = {"mastersthesis": "Master's thesis", "phdthesis": "PhD thesis"}
+_MASTERS_GENRE = re.compile(r"^\s*(master|m\.?\s?(s|sc|a|eng)\b)", re.IGNORECASE)
 
 
 @dataclass
@@ -161,6 +165,12 @@ def _entry_to_csl(entry: dict) -> tuple[str, dict]:
         csl.setdefault("URL", f"https://arxiv.org/abs/{eprint}")
         if bib_type == "misc":
             csl["type"] = csl_type = "article"
+    if csl_type == "thesis":
+        if school := entry.get("school"):
+            csl.setdefault("publisher", _strip_braces(school))
+        # BibTeX's `type` field names an unusual kind ("Habilitation thesis").
+        kind = entry.get("type")
+        csl.setdefault("genre", _strip_braces(kind) if kind else _THESIS_GENRE.get(bib_type))
     return csl_type, csl
 
 
@@ -297,6 +307,9 @@ def csl_to_bibtex_entry(citation_key: str, csl: dict) -> dict:
     preprint = _is_preprint(csl)
     # Preprints are @misc (+ eprint for arXiv), not an @article in a made-up journal.
     bib_type = "misc" if preprint else _CSL_TO_BIBTEX_TYPE.get(csl.get("type", "document"), "misc")
+    genre = csl.get("genre") if isinstance(csl.get("genre"), str) else ""
+    if bib_type == "phdthesis" and _MASTERS_GENRE.match(genre):
+        bib_type = "mastersthesis"
     key = _bib_key(str(citation_key or csl.get("id") or "")) or "ref"
     entry: dict = {"ENTRYTYPE": bib_type, "ID": key}
     if csl.get("title"):
@@ -312,6 +325,12 @@ def csl_to_bibtex_entry(citation_key: str, csl: dict) -> dict:
             entry[bib_key] = _bib_text(csl[csl_key])
     if bib_type == "misc" and csl.get("genre"):
         entry["howpublished"] = _bib_text(csl["genre"])  # e.g. "Preprint"
+    if bib_type in _THESIS_GENRE:
+        # Theses name their university as `school`; styles ignore `publisher` on them.
+        if "publisher" in entry:
+            entry["school"] = entry.pop("publisher")
+        if genre and genre != _THESIS_GENRE[bib_type] and not _MASTERS_GENRE.match(genre):
+            entry["type"] = _bib_text(genre)
     for csl_key, bib_key in _CSL_TO_BIB_VERBATIM:
         if csl.get(csl_key):
             entry[bib_key] = _bib_verbatim(csl[csl_key])

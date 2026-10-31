@@ -9,3 +9,6 @@ export const CSL_TYPES = [
   "webpage",
   "document",
 ];
+
+// CSL has one "thesis" type; its `genre` says which kind (BibTeX: @mastersthesis/@phdthesis).
+export const THESIS_GENRES = ["PhD thesis", "Master's thesis"];

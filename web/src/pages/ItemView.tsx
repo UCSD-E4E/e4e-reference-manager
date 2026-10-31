@@ -242,7 +242,10 @@ export default function ItemView() {
       ) : (
       <div className="card">
         <div className="muted">
-          <span className="tag">{item.type}</span> {item.citation_key}
+          <span className="tag">
+            {item.type === "thesis" && typeof csl.genre === "string" ? csl.genre : item.type}
+          </span>{" "}
+          {item.citation_key}
           {item.year ? ` · ${item.year}` : ""}
         </div>
         {authorsText(csl) && <p>{authorsText(csl)}</p>}

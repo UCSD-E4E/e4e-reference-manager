@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, holdLoginRedirect } from "../api";
-import { CSL_TYPES } from "../csl";
+import { CSL_TYPES, THESIS_GENRES } from "../csl";
 import type { Item } from "../types";
 
 type Csl = Record<string, unknown>;
@@ -63,6 +63,7 @@ export default function ItemEditor({
   const initialYear = base.year ? String(base.year) : "";
   const [key, setKey] = useState(base.citation_key);
   const [type, setType] = useState(base.type);
+  const [genre, setGenre] = useState(str(csl.genre));
   const [title, setTitle] = useState(str(csl.title));
   const [authors, setAuthors] = useState(initialAuthors);
   const [year, setYear] = useState(initialYear);
@@ -95,6 +96,7 @@ export default function ItemEditor({
     };
     for (const [k] of FIELDS) set(k, fields[k]);
     set("abstract", abstract);
+    if (type === "thesis") set("genre", genre);
     if (authors !== initialAuthors) {
       const names = textToNames(authors);
       if (names.length) next.author = names;
@@ -117,6 +119,9 @@ export default function ItemEditor({
   };
 
   const types = CSL_TYPES.includes(base.type) ? CSL_TYPES : [base.type, ...CSL_TYPES];
+  const initialGenre = str(csl.genre);
+  const genres =
+    !initialGenre || THESIS_GENRES.includes(initialGenre) ? THESIS_GENRES : [initialGenre, ...THESIS_GENRES];
 
   return (
     <form className="card editor" onSubmit={save}>
@@ -144,6 +149,19 @@ export default function ItemEditor({
             ))}
           </select>
         </label>
+        {type === "thesis" && (
+          <label>
+            Thesis kind
+            <select value={genre} onChange={(e) => setGenre(e.target.value)}>
+              <option value="">(not given)</option>
+              {genres.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           Year
           <input inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} />
