@@ -139,3 +139,55 @@ def test_arxiv_category_in_the_note_exports_as_primaryclass():
                  "note": "arXiv:2305.15334 [cs.CL]"})
     assert e["eprint"] == "2305.15334"
     assert e["primaryclass"] == "cs.CL"
+
+
+# ── theses: CSL has one "thesis" type; its genre says master's or PhD ──────────────────
+
+HU = {"type": "thesis", "title": "Methods for In-Situ Fish Length Measurement",
+      "author": [{"family": "Hu", "given": "Kyle Sirong"}], "genre": "Master's thesis",
+      "publisher": "University of California San Diego", "issued": {"date-parts": [[2024]]}}
+
+
+@pytest.mark.parametrize("genre", ["Master's thesis", "MS thesis", "M.S. thesis", "masters"])
+def test_masters_thesis_exports_as_mastersthesis(genre):
+    e = _export({**HU, "genre": genre})
+    assert e["ENTRYTYPE"] == "mastersthesis"
+
+
+@pytest.mark.parametrize("genre", [None, "PhD thesis", "Doctoral dissertation"])
+def test_other_theses_export_as_phdthesis(genre):
+    csl = {**HU, "genre": genre} if genre else {k: v for k, v in HU.items() if k != "genre"}
+    assert _export(csl)["ENTRYTYPE"] == "phdthesis"
+
+
+def test_thesis_university_exports_as_school():
+    e = _export(HU)
+    assert e["school"] == "University of California San Diego"
+    assert "publisher" not in e  # BibTeX styles ignore it on theses
+
+
+@pytest.mark.parametrize(
+    "bib_type,genre", [("mastersthesis", "Master's thesis"), ("phdthesis", "PhD thesis")]
+)
+def test_import_reads_thesis_kind_and_school(bib_type, genre):
+    [entry] = parse_bibtex(
+        f"@{bib_type}{{hu2024, title = {{Fish}}, author = {{Hu, Kyle}}, "
+        f"school = {{UC San Diego}}, year = {{2024}}}}"
+    )
+    assert entry.csl_type == "thesis"
+    assert entry.csl_json["genre"] == genre
+    assert entry.csl_json["publisher"] == "UC San Diego"
+
+
+def test_import_keeps_a_thesis_type_field_as_genre():
+    [entry] = parse_bibtex(
+        "@phdthesis{x, title = {T}, type = {Habilitation thesis}, school = {TUM}}"
+    )
+    assert entry.csl_json["genre"] == "Habilitation thesis"
+
+
+def test_thesis_round_trip_keeps_its_kind():
+    back = _reparse(HU)
+    assert back["type"] == "thesis"
+    assert back["genre"] == "Master's thesis"
+    assert back["publisher"] == HU["publisher"]
