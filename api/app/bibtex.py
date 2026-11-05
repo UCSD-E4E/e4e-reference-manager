@@ -33,6 +33,7 @@ _BIBTEX_TO_CSL_TYPE = {
     "unpublished": "manuscript",
     "online": "webpage",
     "electronic": "webpage",
+    "patent": "patent",  # biblatex
 }
 _CSL_TO_BIBTEX_TYPE = {
     "article-journal": "article",
@@ -45,11 +46,24 @@ _CSL_TO_BIBTEX_TYPE = {
     "manuscript": "unpublished",
     "webpage": "online",
     "document": "misc",
+    "patent": "misc",  # BibTeX has no patent type: the number goes in howpublished
 }
 # CSL has one "thesis" type and says which kind in `genre`; BibTeX has an entry type per
 # kind. Each kind's default genre, and how to recognise a master's genre ("MS thesis").
 _THESIS_GENRE = {"mastersthesis": "Master's thesis", "phdthesis": "PhD thesis"}
 _MASTERS_GENRE = re.compile(r"^\s*(master|m\.?\s?(s|sc|a|eng)\b)", re.IGNORECASE)
+# BibTeX's month macros. Written unbraced (`month = oct`) so styles print "October".
+_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+_MONTH_FIELD = re.compile(r"^(\s*month = )\{(" + "|".join(_MONTHS) + r")\}", re.MULTILINE)
+_PATENT = re.compile(r"\bpatent\b", re.IGNORECASE)
+
+
+def _month(value: object) -> int | None:
+    """1..12 from "oct", "October" (the parser expands macros) or "10"; else None."""
+    text = str(value or "").strip().lower()
+    if text.isdigit():
+        return int(text) if 1 <= int(text) <= 12 else None
+    return _MONTHS.index(text[:3]) + 1 if text[:3] in _MONTHS else None
 
 
 @dataclass
@@ -153,7 +167,8 @@ def _entry_to_csl(entry: dict) -> tuple[str, dict]:
     if abstract := entry.get("abstract"):
         csl["abstract"] = abstract
     if (year := _valid_year(entry.get("year"))) is not None:
-        csl["issued"] = {"date-parts": [[year]]}
+        month = _month(entry.get("month"))
+        csl["issued"] = {"date-parts": [[year, month] if month else [year]]}
     for bib_key, csl_key in _BIB_TO_CSL_TEXT:
         if (value := entry.get(bib_key)) and csl_key not in csl:
             csl[csl_key] = _strip_braces(value)
@@ -165,6 +180,12 @@ def _entry_to_csl(entry: dict) -> tuple[str, dict]:
         csl.setdefault("URL", f"https://arxiv.org/abs/{eprint}")
         if bib_type == "misc":
             csl["type"] = csl_type = "article"
+    # A patent: biblatex's @patent, or the usual BibTeX stand-in, a @misc whose
+    # howpublished names it ("U.S. Patent Application Publication US 2025/0315981 A1").
+    if bib_type == "misc" and _PATENT.search(csl.get("genre", "")):
+        csl["type"] = csl_type = "patent"
+    if csl_type == "patent" and "issue" in csl:
+        csl["number"] = csl.pop("issue")  # a patent's number, not an issue
     if csl_type == "thesis":
         if school := entry.get("school"):
             csl.setdefault("publisher", _strip_braces(school))
@@ -339,6 +360,12 @@ def csl_to_bibtex_entry(citation_key: str, csl: dict) -> dict:
         entry["archiveprefix"] = "arXiv"
         if isinstance(csl.get("note"), str) and (m := _ARXIV_CLASS.search(csl["note"])):
             entry["primaryclass"] = m.group(1)
+    if csl.get("type") == "patent":
+        kind = genre or "Patent"
+        number = str(csl.get("number") or "").strip()
+        entry["howpublished"] = _bib_text(f"{kind} {number}" if number not in kind else kind)
+        if month := _month(_date_part(csl, 1)):
+            entry["month"] = _MONTHS[month - 1]
     if (year := year_from_csl(csl)) is not None:
         entry["year"] = str(year)
     return entry
@@ -363,14 +390,20 @@ def build_bibtex(items: list[tuple[str, dict, str | None]]) -> str:
         db.entries = generated
         writer = BibTexWriter()
         writer.indent = "  "
-        out = (out + "\n\n" + bibtexparser.dumps(db, writer)).strip()
+        bib = _MONTH_FIELD.sub(r"\1\2", bibtexparser.dumps(db, writer))
+        out = (out + "\n\n" + bib).strip()
     return out.strip() + "\n"
+
+
+def _date_part(csl: dict, i: int) -> object:
+    """Part `i` (0 year, 1 month, 2 day) of the issued date, or None."""
+    issued = csl.get("issued")
+    parts = issued.get("date-parts") if isinstance(issued, dict) else None
+    if isinstance(parts, list) and parts and isinstance(parts[0], list) and len(parts[0]) > i:
+        return parts[0][i]
+    return None
 
 
 def year_from_csl(csl: dict) -> int | None:
     """The issued year, if it's a plausible one (1..9999; fits the year column)."""
-    issued = csl.get("issued")
-    parts = issued.get("date-parts") if isinstance(issued, dict) else None
-    if isinstance(parts, list) and parts and isinstance(parts[0], list) and parts[0]:
-        return _valid_year(parts[0][0])
-    return None
+    return _valid_year(_date_part(csl, 0))

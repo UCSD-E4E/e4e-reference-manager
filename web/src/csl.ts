@@ -6,6 +6,7 @@ export const CSL_TYPES = [
   "chapter",
   "report",
   "thesis",
+  "patent",
   "webpage",
   "document",
 ];
