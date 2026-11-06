@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.22.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.21.0...v1.22.0) (2026-11-06)
+
+
+### Features
+
+* patents in BibTeX and the editor ([98a467a](https://github.com/UCSD-E4E/e4e-reference-manager/commit/98a467a95bce0a55809c1e333405b257143f3d6f))
+* patents in BibTeX and the editor ([4dab16e](https://github.com/UCSD-E4E/e4e-reference-manager/commit/4dab16e75dea928d331c88dacd8221772a972734))
+
 ## [1.21.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.20.0...v1.21.0) (2026-10-31)
 
 
