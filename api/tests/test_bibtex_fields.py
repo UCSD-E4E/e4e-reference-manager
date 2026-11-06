@@ -191,3 +191,56 @@ def test_thesis_round_trip_keeps_its_kind():
     assert back["type"] == "thesis"
     assert back["genre"] == "Master's thesis"
     assert back["publisher"] == HU["publisher"]
+
+
+# ── patents: BibTeX has no patent type; @misc with the number in howpublished ──────────
+
+PATENT = {"type": "patent", "title": "Imaging systems and methods for dimension measurement",
+          "author": [{"family": "Kastner", "given": "Ryan"}],
+          "genre": "U.S. Patent Application Publication", "number": "US 2025/0315981 A1",
+          "authority": "United States", "issued": {"date-parts": [[2025, 10, 9]]},
+          "URL": "https://patents.google.com/patent/US20250315981A1/en"}
+
+
+def test_patent_exports_as_misc_with_its_number():
+    e = _export(PATENT)
+    assert e["ENTRYTYPE"] == "misc"
+    assert e["howpublished"] == "U.S. Patent Application Publication US 2025/0315981 A1"
+    assert e["month"] == "oct"
+    assert e["year"] == "2025"
+    assert "number" not in e  # in howpublished, not as a bare number
+
+
+def test_patent_without_a_kind_is_called_a_patent():
+    csl = {k: v for k, v in PATENT.items() if k != "genre"}
+    assert _export(csl)["howpublished"] == "Patent US 2025/0315981 A1"
+
+
+def test_month_is_written_unbraced():
+    text = build_bibtex([("k", PATENT, None)])
+    assert "month = oct," in text
+
+
+def test_misc_patent_imports_as_a_patent():
+    [entry] = parse_bibtex(
+        "@misc{Kastner2025, title = {Imaging}, author = {Kastner, Ryan},"
+        " howpublished = {U.S. Patent Application Publication US 2025/0315981 A1},"
+        " month = oct, year = {2025}}"
+    )
+    assert entry.csl_type == "patent"
+    assert entry.csl_json["genre"] == "U.S. Patent Application Publication US 2025/0315981 A1"
+    assert entry.csl_json["issued"] == {"date-parts": [[2025, 10]]}
+
+
+def test_biblatex_patent_imports_as_a_patent():
+    [entry] = parse_bibtex("@patent{p, title = {T}, number = {US 1234567 B2}, year = {2020}}")
+    assert entry.csl_type == "patent"
+    assert entry.csl_json["number"] == "US 1234567 B2"
+
+
+def test_patent_round_trip_exports_the_same_howpublished():
+    first = _export(PATENT)
+    again = _export(_reparse(PATENT))
+    assert again["ENTRYTYPE"] == "misc"
+    assert again["howpublished"] == first["howpublished"]
+    assert again["month"] == "oct"

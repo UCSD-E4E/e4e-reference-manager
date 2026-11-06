@@ -64,6 +64,7 @@ export default function ItemEditor({
   const [key, setKey] = useState(base.citation_key);
   const [type, setType] = useState(base.type);
   const [genre, setGenre] = useState(str(csl.genre));
+  const [patentNumber, setPatentNumber] = useState(str(csl.number));
   const [title, setTitle] = useState(str(csl.title));
   const [authors, setAuthors] = useState(initialAuthors);
   const [year, setYear] = useState(initialYear);
@@ -96,7 +97,8 @@ export default function ItemEditor({
     };
     for (const [k] of FIELDS) set(k, fields[k]);
     set("abstract", abstract);
-    if (type === "thesis") set("genre", genre);
+    if (type === "thesis" || type === "patent") set("genre", genre);
+    if (type === "patent") set("number", patentNumber);
     if (authors !== initialAuthors) {
       const names = textToNames(authors);
       if (names.length) next.author = names;
@@ -161,6 +163,26 @@ export default function ItemEditor({
               ))}
             </select>
           </label>
+        )}
+        {type === "patent" && (
+          <>
+            <label>
+              Patent kind
+              <input
+                value={genre}
+                placeholder="U.S. Patent Application Publication"
+                onChange={(e) => setGenre(e.target.value)}
+              />
+            </label>
+            <label>
+              Patent number
+              <input
+                value={patentNumber}
+                placeholder="US 2025/0315981 A1"
+                onChange={(e) => setPatentNumber(e.target.value)}
+              />
+            </label>
+          </>
         )}
         <label>
           Year
