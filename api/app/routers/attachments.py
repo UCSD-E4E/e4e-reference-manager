@@ -2,21 +2,23 @@ import asyncio
 import hashlib
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import oa_pdf
-from ..auth import get_current_user
+from ..audit import record
+from ..auth import get_current_user, get_interactive_user
 from ..db import get_session
 from ..deps import item_editor, library_access_level, library_editor
 from ..models import _ACCESS_RANK, Attachment, Item, Library, User
 from ..pdf import extract_pdf_text
-from ..schemas import AttachmentOut, AttachmentText, FetchedPdf, LibraryPdfFetch
-from ..storage import OPAQUE_TYPE, download_bytes, presigned_get_url, upload_bytes
+from ..schemas import ArchiveIn, AttachmentOut, AttachmentText, FetchedPdf, LibraryPdfFetch
+from ..storage import OPAQUE_TYPE, delete_object, download_bytes, presigned_get_url, upload_bytes
 from ..upload_limits import read_pdf_upload
 
 logger = logging.getLogger("refman")
@@ -25,9 +27,12 @@ router = APIRouter(tags=["attachments"])
 
 
 async def _refresh_item_pdf_text(session: AsyncSession, item: Item) -> None:
-    """Recompute the owning item's concatenated PDF text (drives the FTS tsvector)."""
+    """Recompute the owning item's concatenated PDF text (drives the FTS tsvector).
+    PDFs in the recycle bin don't count."""
     rows = await session.execute(
-        select(Attachment.text).where(Attachment.item_id == item.id)
+        select(Attachment.text).where(
+            Attachment.item_id == item.id, Attachment.archived_at.is_(None)
+        )
     )
     item.pdf_text = "\n\n".join(t for (t,) in rows.all() if t)
 
@@ -106,21 +111,40 @@ async def fetch_pdf(
             "Paywalled papers can't be fetched; upload the PDF instead.",
         )
     data, source, url = found
-    att, created = await _attach_fetched_pdf(session, item, data)
+    try:
+        att, created = await _attach_fetched_pdf(session, item, data)
+    except BinnedCopy as e:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"The open-access copy found ({url}) is in this reference's recycle bin as "
+            f"{e.attachment.filename}: {e.attachment.archive_reason}. Restore it to use "
+            "it, or upload the right PDF.",
+        )
     if not created:
         response.status_code = status.HTTP_200_OK
     return FetchedPdf(attachment=att, source=source, url=url)
+
+
+class BinnedCopy(Exception):
+    """The fetched file is one someone moved to the item's recycle bin."""
+
+    def __init__(self, attachment: Attachment):
+        self.attachment = attachment
 
 
 async def _attach_fetched_pdf(
     session: AsyncSession, item: Item, data: bytes
 ) -> tuple[Attachment, bool]:
     """Attach downloaded PDF bytes unless the identical file is already on the item.
-    Returns (attachment, created)."""
+    Returns (attachment, created). Raises BinnedCopy rather than bring back a file that
+    was moved to the recycle bin (an open-access copy that's the wrong paper)."""
     sha256 = hashlib.sha256(data).hexdigest()
     existing = next((a for a in item.attachments if a.sha256 == sha256), None)
     if existing is not None:
         return existing, False
+    binned = next((a for a in item.archived_attachments if a.sha256 == sha256), None)
+    if binned is not None:
+        raise BinnedCopy(binned)
     att = await _store_attachment(
         session, item, data, f"{item.citation_key or 'paper'}.pdf", "application/pdf"
     )
@@ -155,7 +179,7 @@ async def fetch_pdfs(
     items = list((await session.execute(query)).scalars().all())
 
     counts = dict.fromkeys(
-        ("attached", "already_had_pdf", "not_found", "no_identifier", "failed"), 0
+        ("attached", "already_had_pdf", "not_found", "no_identifier", "failed", "archived"), 0
     )
     # Snapshot what the network step and the response need: a failed item's rollback
     # expires every loaded object, and async sessions can't lazily refresh them.
@@ -193,6 +217,8 @@ async def fetch_pdfs(
                         return
                     _att, created = await _attach_fetched_pdf(session, item, found[0])
                     counts["attached" if created else "already_had_pdf"] += 1
+                except BinnedCopy:
+                    counts["archived"] += 1
                 except Exception:
                     logger.exception("Storing fetched PDF failed for item %s", item_id)
                     await session.rollback()
@@ -217,6 +243,19 @@ async def _owned_attachment(
     if lib is None or await library_access_level(session, user, lib) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
     return att
+
+
+async def _editable_attachment(
+    attachment_id: uuid.UUID, user: User, session: AsyncSession
+) -> tuple[Attachment, Item]:
+    """The attachment and its item, or 404 (no access) / 403 (no edit access)."""
+    att = await _owned_attachment(attachment_id, user, session)
+    item = await session.get(Item, att.item_id)
+    lib = await session.get(Library, item.library_id)
+    level = await library_access_level(session, user, lib)
+    if _ACCESS_RANK.get(level or "", 0) < _ACCESS_RANK["edit"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Edit access required")
+    return att, item
 
 
 @router.get("/attachments/{attachment_id}/url")
@@ -274,13 +313,7 @@ async def reextract_text(
 ):
     """Re-download the attachment and refresh its cached text + the item's FTS index.
     Requires edit access on the library (it mutates the search index)."""
-    att = await _owned_attachment(attachment_id, user, session)
-    item = await session.get(Item, att.item_id)
-    lib = await session.get(Library, item.library_id)
-    level = await library_access_level(session, user, lib)
-    if _ACCESS_RANK.get(level or "", 0) < _ACCESS_RANK["edit"]:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Edit access required")
-
+    att, item = await _editable_attachment(attachment_id, user, session)
     data = await run_in_threadpool(download_bytes, att.storage_key)
     att.text = (
         await run_in_threadpool(extract_pdf_text, data)
@@ -292,3 +325,107 @@ async def reextract_text(
     await session.commit()
     await session.refresh(att)
     return att
+
+
+# ── The recycle bin: anyone who can edit bins and restores; only people delete for good ──
+
+
+@router.post("/attachments/{attachment_id}/archive", response_model=AttachmentOut)
+async def archive_attachment(
+    attachment_id: uuid.UUID,
+    payload: ArchiveIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Move a PDF to its reference's recycle bin, saying why. It stops being the
+    reference's PDF (search, has_pdf, fetching) but is kept until a person deletes it
+    for good, and can be restored."""
+    att, item = await _editable_attachment(attachment_id, user, session)
+    if att.archived_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This PDF is already in the recycle bin")
+    att.archived_at = datetime.now(timezone.utc)
+    att.archived_by_id = user.id
+    att.archive_reason = payload.reason
+    record(
+        session,
+        actor=user,
+        library_id=item.library_id,
+        entity_type="attachment",
+        entity_id=att.id,
+        operation="archive",
+        summary=f"Moved {att.filename} to the recycle bin: {payload.reason}",
+        after={"item_id": str(item.id), "filename": att.filename, "reason": payload.reason},
+    )
+    await session.flush()
+    await _refresh_item_pdf_text(session, item)
+    await session.commit()
+    await session.refresh(att)
+    return att
+
+
+@router.post("/attachments/{attachment_id}/restore", response_model=AttachmentOut)
+async def restore_attachment(
+    attachment_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Take a PDF out of the recycle bin: it's the reference's PDF again."""
+    att, item = await _editable_attachment(attachment_id, user, session)
+    if att.archived_at is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This PDF isn't in the recycle bin")
+    before = {"item_id": str(item.id), "filename": att.filename, "reason": att.archive_reason}
+    att.archived_at = att.archived_by_id = att.archive_reason = None
+    record(
+        session,
+        actor=user,
+        library_id=item.library_id,
+        entity_type="attachment",
+        entity_id=att.id,
+        operation="restore",
+        summary=f"Restored {att.filename} from the recycle bin",
+        before=before,
+    )
+    await session.flush()
+    await _refresh_item_pdf_text(session, item)
+    await session.commit()
+    await session.refresh(att)
+    return att
+
+
+@router.delete("/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_attachment_forever(
+    attachment_id: uuid.UUID,
+    user: User = Depends(get_interactive_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete a PDF in the recycle bin for good, with its highlights and its stored file.
+    Only for people signed in to the web app: API tokens (agents, scripts) can't."""
+    att, item = await _editable_attachment(attachment_id, user, session)
+    if att.archived_at is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Move the PDF to the recycle bin before deleting it"
+        )
+    record(
+        session,
+        actor=user,
+        library_id=item.library_id,
+        entity_type="attachment",
+        entity_id=att.id,
+        operation="purge",
+        summary=f"Permanently deleted {att.filename} from the recycle bin",
+        before={"item_id": str(item.id), "filename": att.filename, "reason": att.archive_reason},
+    )
+    # Stored objects are content-addressed per item: another attachment may share it.
+    shared = await session.scalar(
+        select(func.count())
+        .select_from(Attachment)
+        .where(Attachment.storage_key == att.storage_key, Attachment.id != att.id)
+    )
+    key = att.storage_key
+    await session.delete(att)
+    await session.commit()
+    if not shared:
+        try:
+            await run_in_threadpool(delete_object, key)
+        except Exception:  # the row is gone either way; an orphaned object is harmless
+            logger.exception("Deleting stored object %s failed", key)

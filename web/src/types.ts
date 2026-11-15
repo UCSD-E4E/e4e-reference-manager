@@ -100,6 +100,10 @@ export interface Attachment {
   content_type: string;
   size: number;
   created_at: string;
+  // Set while the PDF is in its reference's recycle bin.
+  archived_at?: string | null;
+  archived_by?: User | null;
+  archive_reason?: string | null;
 }
 
 export type ValidationStatus = "verified" | "metadata_mismatch" | "not_found" | "unverifiable";
@@ -152,6 +156,7 @@ export interface Item {
   created_at: string;
   updated_at: string;
   attachments: Attachment[];
+  archived_attachments: Attachment[]; // the recycle bin
 }
 
 export interface ItemList {

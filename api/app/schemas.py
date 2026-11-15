@@ -64,7 +64,23 @@ class AttachmentOut(BaseModel):
     content_type: str
     size: int
     created_at: datetime
+    # Set while the attachment is in its item's recycle bin.
+    archived_at: datetime | None = None
+    archived_by: UserOut | None = None
+    archive_reason: str | None = None
 
+
+class ArchiveIn(BaseModel):
+    """Why a PDF is going to the recycle bin ("wrong paper", "scan without text", ...)."""
+
+    reason: Annotated[str, Field(max_length=1000)]
+
+    @model_validator(mode="after")
+    def _reason_given(self) -> "ArchiveIn":
+        self.reason = self.reason.strip()
+        if not self.reason:
+            raise ValueError("Say why the PDF is going to the recycle bin")
+        return self
 
 
 class AttachmentText(BaseModel):
@@ -96,6 +112,7 @@ class LibraryPdfFetch(BaseModel):
     not_found: int  # had a DOI/arXiv id, but no open-access copy
     no_identifier: int  # nothing to look up: no DOI, arXiv id, or usable http(s) URL
     failed: int  # storage/extraction error; safe to retry
+    archived: int = 0  # the copy found is one someone moved to the recycle bin
     next_after: uuid.UUID | None  # pass back as `after` for the next batch; None = done
 
 class CitationBuild(BaseModel):
@@ -161,6 +178,7 @@ class ItemOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     attachments: list[AttachmentOut] = Field(default_factory=list)
+    archived_attachments: list[AttachmentOut] = Field(default_factory=list)  # recycle bin
 
 
 class TrashedItemOut(BaseModel):

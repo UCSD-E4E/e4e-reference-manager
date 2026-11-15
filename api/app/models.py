@@ -263,8 +263,19 @@ class Item(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # The item's PDFs. Ones moved to its recycle bin are left out here (and so from
+    # search, has_pdf, fetching and citation extraction) and listed separately.
     attachments: Mapped[list["Attachment"]] = relationship(
-        back_populates="item", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="item",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        primaryjoin="and_(Item.id == Attachment.item_id, Attachment.archived_at.is_(None))",
+    )
+    archived_attachments: Mapped[list["Attachment"]] = relationship(
+        viewonly=True,
+        lazy="selectin",
+        primaryjoin="and_(Item.id == Attachment.item_id, Attachment.archived_at.is_not(None))",
+        order_by="Attachment.archived_at.desc()",
     )
     tags: Mapped[list["Tag"]] = relationship(secondary=item_tag, lazy="selectin")
 
@@ -300,8 +311,16 @@ class Attachment(Base):
     # citation graph; None = not extracted yet.
     references: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # In the item's recycle bin: who moved it there, when and why. Binned PDFs are kept
+    # until a person deletes them for good (agents can't); restoring clears these.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
+    )
+    archive_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     item: Mapped["Item"] = relationship(back_populates="attachments")
+    archived_by: Mapped["User | None"] = relationship(lazy="selectin")
 
 
 class Citation(Base):

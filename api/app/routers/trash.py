@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_interactive_user
 from ..db import get_session
 from ..deps import library_editor, library_viewer
 from ..models import Item, Library, User
@@ -75,7 +75,7 @@ async def restore(
 async def delete_forever(
     item_id: uuid.UUID,
     lib: Library = Depends(library_editor),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_interactive_user),  # people only: never an API token
     session: AsyncSession = Depends(get_session),
 ):
     await purge(session, await _trashed_item(session, lib, item_id), user)
@@ -85,7 +85,7 @@ async def delete_forever(
 @router.delete("")
 async def empty_trash(
     lib: Library = Depends(library_editor),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_interactive_user),  # people only: never an API token
     session: AsyncSession = Depends(get_session),
 ):
     items = list((await session.execute(_trashed(lib))).scalars())

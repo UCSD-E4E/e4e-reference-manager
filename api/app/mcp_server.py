@@ -9,8 +9,9 @@ Each tool is a thin wrapper over the REST API, called in-process with the caller
 token as a Bearer header, so tools get exactly the REST endpoints' permissions, validation
 and audit trail, and no logic is duplicated here. Agents can't destroy data: metadata
 edits (update_reference) are recorded in the reference's history and can be undone,
-delete_reference only moves a reference to its library's trash for 30 days, and there
-is no permanent-delete tool. (validate_reference replaces the stored verdict without a
+delete_reference only moves a reference to its library's trash for 30 days,
+archive_pdf only moves a PDF to its reference's recycle bin, and there is no
+permanent-delete tool (the REST API refuses API tokens for that too). (validate_reference replaces the stored verdict without a
 history entry; a verdict can always be recomputed.)
 """
 from __future__ import annotations
@@ -51,7 +52,9 @@ mcp = MCPServer(
         "re-checks it against Crossref/arXiv. PDFs: get_reference lists a reference's "
         "attachments; read one with get_pdf_text, or fetch a missing open-access copy with "
         "find_pdf; for a PDF the user has locally, create_pdf_upload gives a one-time "
-        "link to curl it to. To fix metadata, call get_reference, then update_reference "
+        "link to curl it to. A wrong or broken PDF goes to the reference's recycle bin with "
+        "archive_pdf and a reason (restore_pdf undoes it); deleting one for good is left "
+        "to people in the web app. To fix metadata, call get_reference, then update_reference "
         "with its `version`; edits are re-validated and can be undone from the web app. "
         "delete_reference moves a reference to the trash (restore_reference undoes it "
         "for 30 days); confirm with the user before deleting."
@@ -222,7 +225,8 @@ async def list_references(
 @mcp.tool(annotations=_READ)
 async def get_reference(ctx: Context, reference_id: uuid.UUID) -> dict:
     """Get one reference in full: its CSL-JSON metadata (abstract, venue, pages, ...),
-    validation verdict and the notes people have left on it."""
+    validation verdict, the notes people have left on it, its PDFs, and the PDFs in
+    its recycle bin (`archived_attachments`, with why each was binned)."""
     async with _caller_api(ctx) as api:
         item_r, notes_r = await asyncio.gather(
             api.get(f"/items/{reference_id}"), api.get(f"/items/{reference_id}/notes")
@@ -238,6 +242,7 @@ async def get_reference(ctx: Context, reference_id: uuid.UUID) -> dict:
             {k: a[k] for k in ("id", "filename", "content_type", "size")}
             for a in item.get("attachments") or []
         ],
+        "archived_attachments": [_binned(a) for a in item.get("archived_attachments") or []],
         "notes": [
             {"id": n["id"], "body": n["body"], "created_at": n["created_at"]} for n in notes
         ],
@@ -393,6 +398,36 @@ async def find_library_pdfs(
     if after is not None:
         params["after"] = str(after)
     return await _json(ctx, "POST", f"/libraries/{library_id}/fetch-pdfs", params=params)
+
+
+def _binned(a: dict) -> dict:
+    return {
+        **{k: a[k] for k in ("id", "filename", "content_type", "size")},
+        "archived_at": a.get("archived_at"),
+        "archived_by": (a.get("archived_by") or {}).get("email"),
+        "archive_reason": a.get("archive_reason"),
+    }
+
+
+@mcp.tool(annotations=_TRASH)
+async def archive_pdf(
+    ctx: Context,
+    attachment_id: uuid.UUID,
+    reason: Annotated[str, Field(min_length=1, max_length=1000)],
+) -> dict:
+    """Move a PDF (attachment ids come from get_reference) to its reference's recycle
+    bin, with the reason: "wrong paper", "supplement, not the article", "scan with no
+    text layer", ... It stops being the reference's PDF (search, has_pdf; find_pdf
+    won't fetch the same file again) but is kept, and restore_pdf or the web app brings
+    it back. Only people can delete a PDF for good, in the web app."""
+    a = await _json(ctx, "POST", f"/attachments/{attachment_id}/archive", json={"reason": reason})
+    return _binned(a)
+
+
+@mcp.tool(annotations=_RESTORE)
+async def restore_pdf(ctx: Context, attachment_id: uuid.UUID) -> dict:
+    """Take a PDF out of its reference's recycle bin: it's the reference's PDF again."""
+    return _binned(await _json(ctx, "POST", f"/attachments/{attachment_id}/restore"))
 
 
 # ── Tools: editing ──────────────────────────────────────────────────────────────────────

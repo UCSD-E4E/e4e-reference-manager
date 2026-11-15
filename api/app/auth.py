@@ -257,10 +257,12 @@ async def get_current_user(ctx: AuthContext = Depends(get_auth_context)) -> User
 
 
 async def get_interactive_user(ctx: AuthContext = Depends(get_auth_context)) -> User:
-    """A user signed in to the web app, not a script holding an API token. Guards token
-    management, so a leaked token can't mint itself replacements."""
+    """A user signed in to the web app, not a script or agent holding an API token.
+    Guards token management (so a leaked token can't mint itself replacements) and
+    deleting for good (trashed references, binned PDFs), which only people may do."""
     if ctx.token_id is not None:
         raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "API tokens can't manage tokens; use the web app"
+            status.HTTP_403_FORBIDDEN,
+            "API tokens can't do this; sign in to the web app to do it yourself",
         )
     return ctx.user
