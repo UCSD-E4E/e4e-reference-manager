@@ -3,6 +3,7 @@ import type {
   AnnotationRect,
   ApiToken,
   ApiTokenCreated,
+  Attachment,
   AuditEvent,
   AutoGroup,
   AutoGroupGenerateSource,
@@ -235,6 +236,16 @@ export const api = {
   attachmentSignedUrl: (attId: string) =>
     req<{ url: string; content_type: string }>(`/attachments/${attId}/url`),
   attachmentDownloadUrl: (attId: string) => `${API_URL}/attachments/${attId}/download`,
+  // PDF recycle bin: anyone who can edit bins and restores; deleting is for people only.
+  archiveAttachment: (attId: string, reason: string) =>
+    req<Attachment>(`/attachments/${attId}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  restoreAttachment: (attId: string) =>
+    req<Attachment>(`/attachments/${attId}/restore`, { method: "POST" }),
+  deleteAttachmentForever: (attId: string) =>
+    req<void>(`/attachments/${attId}`, { method: "DELETE" }),
 
   // PDF annotations (Phase 4)
   listAnnotations: (attId: string) => req<Annotation[]>(`/attachments/${attId}/annotations`),

@@ -261,6 +261,7 @@ async def test_fetch_pdfs_for_whole_library(client, library, net):
         "not_found": 1,
         "no_identifier": 1,  # nothing to look up isn't the same as paywalled
         "failed": 0,
+        "archived": 0,
     }
 
 

@@ -42,6 +42,8 @@ EXPECTED_TOOLS = {
     "list_trash",
     "restore_reference",
     "create_pdf_upload",
+    "archive_pdf",
+    "restore_pdf",
 }
 
 ATTENTION = (
@@ -407,7 +409,7 @@ async def test_tool_annotations_are_honest(agent):
         "list_trash",
     }
     # These overwrite stored data (metadata; the validation verdict): updates, not adds.
-    updates = {"update_reference", "validate_reference", "delete_reference"}
+    updates = {"update_reference", "validate_reference", "delete_reference", "archive_pdf"}
     assert {n for n, a in tools.items() if a.destructive_hint} == updates
 
 
@@ -450,6 +452,42 @@ async def test_get_reference_lists_pdfs(agent, db, alice):
     ]
     [summary] = (await _call(agent, "list_references", library_id=lib_id))["references"]
     assert summary["has_pdf"] is True
+
+
+async def test_archive_pdf_moves_it_to_the_recycle_bin(agent, db, alice):
+    lib_id, item_id, att_id = await _paper_with_pdf(db, alice)
+    out = await _call(agent, "archive_pdf", attachment_id=att_id, reason="Scan of the wrong paper")
+    assert out["archive_reason"] == "Scan of the wrong paper"
+
+    ref = await _call(agent, "get_reference", reference_id=item_id)
+    assert ref["attachments"] == []
+    assert ref["has_pdf"] is False
+    [binned] = ref["archived_attachments"]
+    assert binned["id"] == att_id
+    assert binned["archive_reason"] == "Scan of the wrong paper"
+    assert binned["archived_by"] == alice.email
+    assert binned["archived_at"]
+
+
+async def test_archive_pdf_needs_a_reason(agent, db, alice):
+    _, _, att_id = await _paper_with_pdf(db, alice)
+    r = await agent.call_tool("archive_pdf", {"attachment_id": att_id, "reason": "  "})
+    assert r.is_error
+
+
+async def test_restore_pdf_undoes_an_archive(agent, db, alice):
+    _, item_id, att_id = await _paper_with_pdf(db, alice)
+    await _call(agent, "archive_pdf", attachment_id=att_id, reason="Oops")
+    out = await _call(agent, "restore_pdf", attachment_id=att_id)
+    assert out["archived_at"] is None
+    ref = await _call(agent, "get_reference", reference_id=item_id)
+    assert [a["id"] for a in ref["attachments"]] == [att_id]
+    assert ref["archived_attachments"] == []
+
+
+async def test_agents_have_no_way_to_delete_a_pdf_for_good(agent):
+    names = {t.name for t in await agent.list_tools()}
+    assert not {n for n in names if "pdf" in n and ("delete" in n or "purge" in n)}
 
 
 async def test_get_pdf_text_pages(agent, db, alice):

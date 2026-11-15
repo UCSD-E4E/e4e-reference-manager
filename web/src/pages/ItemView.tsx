@@ -4,7 +4,7 @@ import { api } from "../api";
 import PdfViewer from "../components/PdfViewer";
 import ItemEditor from "../components/ItemEditor";
 import ValidationBadge from "../components/ValidationBadge";
-import type { AuditEvent, Collection, Item, Note, PdfValidationResult, Tag } from "../types";
+import type { Attachment, AuditEvent, Collection, Item, Note, PdfValidationResult, Tag } from "../types";
 
 function authorsText(csl: Record<string, unknown>): string {
   const authors = csl.author as Array<{ family?: string; given?: string }> | undefined;
@@ -115,6 +115,49 @@ export default function ItemView() {
       setErr(String(e));
     }
     input.value = ""; // so picking the same file again still fires onChange
+  };
+
+  const closeViewerFor = (attId: string) => {
+    if (viewAtt === attId) {
+      setViewUrl(null);
+      setViewAtt(null);
+    }
+  };
+
+  const archivePdf = async (a: Attachment) => {
+    const reason = window.prompt(
+      `Why move “${a.filename}” to the recycle bin? (e.g. wrong paper, supplement only)`,
+      "",
+    );
+    if (!reason?.trim()) return;
+    try {
+      await api.archiveAttachment(a.id, reason.trim());
+      closeViewerFor(a.id);
+      reload();
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
+  const restorePdf = async (a: Attachment) => {
+    try {
+      await api.restoreAttachment(a.id);
+      reload();
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
+
+  const deletePdfForever = async (a: Attachment) => {
+    if (!confirm(`Delete “${a.filename}” for good, with its highlights? This can't be undone.`))
+      return;
+    try {
+      await api.deleteAttachmentForever(a.id);
+      closeViewerFor(a.id);
+      reload();
+    } catch (e) {
+      setErr(String(e));
+    }
   };
 
   const findPdf = async () => {
@@ -449,9 +492,56 @@ export default function ItemView() {
                   Download
                 </button>
               </a>
+              {canEdit && (
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => archivePdf(a)}
+                  title="Wrong or broken PDF? Move it to the recycle bin (you can restore it)"
+                >
+                  Move to bin
+                </button>
+              )}
             </div>
           </div>
         ))}
+        {item.archived_attachments?.length > 0 && (
+          <>
+            <h3 style={{ margin: "1rem 0 0.25rem" }}>Recycle bin</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Kept until someone deletes them for good. Not searched, and not counted as this
+              reference's PDF.
+            </p>
+            {item.archived_attachments.map((a) => (
+              <div className="item-row" key={a.id}>
+                <div className="grow">
+                  {a.filename} <span className="muted">({Math.round(a.size / 1024)} KB)</span>
+                  <br />
+                  <span className="muted">
+                    {a.archive_reason}
+                    {a.archived_by ? ` · ${a.archived_by.name || a.archived_by.email}` : ""}
+                    {a.archived_at ? ` · ${new Date(a.archived_at).toLocaleString()}` : ""}
+                  </span>
+                </div>
+                <div className="row">
+                  <button className="secondary" type="button" onClick={() => view(a.id)}>
+                    View
+                  </button>
+                  {canEdit && (
+                    <>
+                      <button className="secondary" type="button" onClick={() => restorePdf(a)}>
+                        Restore
+                      </button>
+                      <button className="secondary" type="button" onClick={() => deletePdfForever(a)}>
+                        Delete forever
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {viewUrl && (

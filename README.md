@@ -268,7 +268,8 @@ curl -H "Authorization: Bearer refman_..." https://bib.krg.ucsd.edu/api/librarie
 - Every token expires: 90 days by default, at most 1 year. A user can hold 25 unexpired
   tokens; expired ones stay listed (marked "Expired") for 30 days, then are pruned.
 - Any `Authorization` header that isn't a valid `Bearer <token>` is refused with a 401.
-- Tokens can't list, create or revoke tokens; that requires a signed-in browser session.
+- Tokens can't list, create or revoke tokens, or delete anything for good (a trashed
+  reference, a PDF in the recycle bin); those require a signed-in browser session.
 - A Bearer header takes precedence over `REFMAN_DEV_AUTH`, so token-based clients can be
   tested locally. An invalid token gets a 401 and never falls back to the dev user.
 - The OpenAPI schema is at `/api/openapi.json` (interactive docs at `/api/docs`).
@@ -306,14 +307,17 @@ can send the bare token as `X-API-Key: refman_...` instead. If both headers are 
 | `get_pdf_text`, `get_pdf_url` | Read an attached PDF's text (paged), or get a short-lived download link |
 | `find_pdf`, `find_library_pdfs` | Find and attach legal open-access PDFs (Unpaywall, arXiv, or the reference's own URL) for a reference or a library |
 | `create_pdf_upload` | One-time link (15 min, one PDF) to `curl` a local PDF to a reference, e.g. a paywalled paper you downloaded |
+| `archive_pdf`, `restore_pdf` | Move a wrong or broken PDF to its reference's recycle bin, with a reason; undo it |
 
 - Every tool calls the REST API in-process with the caller's token. Permissions,
   validation and the activity history are the same as in the web app.
 - Agents can't destroy data. Metadata edits need edit access, are recorded in the
   reference's history (undo them from the web app), and `update_reference` refuses to
   overwrite a newer version than the one the agent read. `delete_reference` only moves a
-  reference to the trash for 30 days. There is no permanent-delete tool; emptying the
-  trash stays a human action in the web app. (`validate_reference` replaces the stored
+  reference to the trash for 30 days, and `archive_pdf` only moves a PDF to its
+  reference's recycle bin (kept until a person deletes it). There is no
+  permanent-delete tool, and the REST API refuses API tokens for deleting for good
+  (trash and PDF recycle bin), so that stays a human action in the web app. (`validate_reference` replaces the stored
   verdict without a history entry; re-validating recomputes it.)
 - The server is stateless streamable HTTP with JSON responses (`app/mcp_server.py`).
   Requests without a valid token (Bearer or `X-API-Key`) get a 401, even with

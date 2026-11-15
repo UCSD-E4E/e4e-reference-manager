@@ -69,3 +69,7 @@ def presigned_get_url(key: str, download_name: str | None = None) -> str:
     return _client(settings.s3_public_endpoint_url).generate_presigned_url(
         "get_object", Params=params, ExpiresIn=settings.presign_expiry_seconds
     )
+
+
+def delete_object(key: str) -> None:
+    _client().delete_object(Bucket=settings.s3_bucket, Key=key)

@@ -116,6 +116,11 @@ async def merge_into(session: AsyncSession, keep: Item, other: Item) -> None:
     for att in list(other.attachments):
         other.attachments.remove(att)
         keep.attachments.append(att)
+    # PDFs in other's recycle bin aren't in that relationship; repoint them directly
+    # (the database would otherwise delete them along with `other`).
+    for att in list(other.archived_attachments):
+        att.item_id = keep.id
+    await session.flush()  # before `other` is deleted
     notes = (await session.execute(select(Note).where(Note.item_id == other.id))).scalars()
     for note in notes:
         note.item_id = keep.id

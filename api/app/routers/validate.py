@@ -86,7 +86,11 @@ async def validate_item_references(
     and verify each citation against Crossref/arXiv."""
     rows = await session.execute(
         select(Attachment)
-        .where(Attachment.item_id == item.id, Attachment.content_type == "application/pdf")
+        .where(
+            Attachment.item_id == item.id,
+            Attachment.content_type == "application/pdf",
+            Attachment.archived_at.is_(None),
+        )
         .order_by(Attachment.created_at)
     )
     pdf = rows.scalars().first()
