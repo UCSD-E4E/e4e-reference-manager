@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.23.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.22.0...v1.23.0) (2026-11-15)
+
+
+### Features
+
+* PDF recycle bin; deleting for good is for people only ([da4270b](https://github.com/UCSD-E4E/e4e-reference-manager/commit/da4270b25fb9cb3d523c3f04a7160e0b8e28a943))
+* PDF recycle bin; deleting for good is for people only ([e587fb0](https://github.com/UCSD-E4E/e4e-reference-manager/commit/e587fb0f200f6cd6407dedad5c1187eb029a965a))
+
 ## [1.22.0](https://github.com/UCSD-E4E/e4e-reference-manager/compare/v1.21.0...v1.22.0) (2026-11-06)
 
 
